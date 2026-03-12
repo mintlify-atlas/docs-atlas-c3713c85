@@ -1,0 +1,123 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "pyPhoPlaceCellAnalysis",
+  "projectDescription": "A comprehensive Python library for analyzing hippocampal place cell data with advanced Bayesian decoding, replay detection, and interactive visualization tools",
+  "theme": "aspen",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/pipeline",
+              "concepts/data-loading",
+              "concepts/place-cells",
+              "concepts/decoders"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/data-import",
+              "guides/running-pipeline",
+              "guides/bayesian-decoding",
+              "guides/replay-analysis",
+              "guides/visualization",
+              "guides/batch-processing"
+            ]
+          },
+          {
+            "group": "Visualization",
+            "pages": [
+              "visualization/overview",
+              "visualization/2d-plots",
+              "visualization/3d-visualization",
+              "visualization/gui-tools",
+              "visualization/interactive-widgets"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview"
+            ]
+          },
+          {
+            "group": "Pipeline",
+            "pages": [
+              "api/pipeline/neuropy-pipeline",
+              "api/pipeline/computation-stages",
+              "api/pipeline/computation-results"
+            ]
+          },
+          {
+            "group": "Analysis",
+            "pages": [
+              "api/analysis/decoders",
+              "api/analysis/reconstruction",
+              "api/analysis/replay-scoring",
+              "api/analysis/position-derivatives"
+            ]
+          },
+          {
+            "group": "Data Structures",
+            "pages": [
+              "api/data/positional-data",
+              "api/data/computation-results",
+              "api/data/decoder-results"
+            ]
+          },
+          {
+            "group": "Visualization Components",
+            "pages": [
+              "api/visualization/pyqt",
+              "api/visualization/pyvista",
+              "api/visualization/napari"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Bayesian Position Decoding",
+    "Hippocampal Replay Detection",
+    "Place Field Analysis",
+    "Interactive 2D/3D Visualization",
+    "Pipeline-based Analysis Framework",
+    "Multi-context Comparison Tools",
+    "HDF5 Serialization Support",
+    "GUI Tools with PyQt/Napari"
+  ],
+  "publicApiSurface": [
+    "NeuropyPipeline",
+    "ComputationResult",
+    "BasePositionDecoder",
+    "BayesianPlacemapPositionDecoder",
+    "DecodedFilterEpochsResult",
+    "ZhangReconstructionImplementation",
+    "PfND (Place Fields)",
+    "ComputedPipelineStage",
+    "import_data",
+    "process_positionalData",
+    "plot_data"
+  ]
+}
