@@ -1,0 +1,283 @@
+---
+title: "Positional Data"
+description: "Data structures for positional tracking and analysis"
+---
+
+## Overview
+
+The `PhoPositionalData` module provides utilities for importing, processing, and visualizing positional tracking data from behavioral experiments.
+
+## Data Import Functions
+
+### build_spike_positions_list
+
+Interpolate the positions that a spike occurred for each spike timestamp.
+
+<ParamField path="spike_list" type="list">
+  List of spike times for each cell
+</ParamField>
+
+<ParamField path="t" type="ndarray">
+  Time array from position tracking
+</ParamField>
+
+<ParamField path="x" type="ndarray">
+  X position coordinates
+</ParamField>
+
+<ParamField path="y" type="ndarray">
+  Y position coordinates
+</ParamField>
+
+<ResponseField name="spike_positions_list" type="list">
+  List of spike position arrays for each cell. Each element is a 2×N array with interpolated (x, y) positions
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.import_data import build_spike_positions_list
+
+# Interpolate spike positions from position tracking data
+spike_positions = build_spike_positions_list(
+    spike_list=spike_times,
+    t=position_t,
+    x=position_x,
+    y=position_y
+)
+```
+
+---
+
+### perform_import_positions
+
+Import position tracking data from MATLAB export files.
+
+<ParamField path="mat_import_parent_path" type="Path" default="Path(r'C:\Share\data\RoyMaze1')">
+  Parent directory containing exported MATLAB data files
+</ParamField>
+
+<ResponseField name="t" type="ndarray">
+  Time array (seconds)
+</ResponseField>
+
+<ResponseField name="x" type="ndarray">
+  X position coordinates
+</ResponseField>
+
+<ResponseField name="y" type="ndarray">
+  Y position coordinates
+</ResponseField>
+
+<ResponseField name="speeds" type="ndarray">
+  Animal speed at each timepoint
+</ResponseField>
+
+<ResponseField name="dt" type="ndarray">
+  Time differences between samples
+</ResponseField>
+
+<ResponseField name="dx" type="ndarray">
+  X position differences between samples
+</ResponseField>
+
+<ResponseField name="dy" type="ndarray">
+  Y position differences between samples
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.import_data import perform_import_positions
+from pathlib import Path
+
+# Import position data
+data_path = Path(r'C:\Share\data\RoyMaze1')
+t, x, y, speeds, dt, dx, dy = perform_import_positions(
+    mat_import_parent_path=data_path
+)
+
+print(f"Imported {len(t)} position samples")
+print(f"Position range: X=[{x.min():.2f}, {x.max():.2f}], Y=[{y.min():.2f}, {y.max():.2f}]")
+```
+
+---
+
+### perform_import_spikes
+
+Import spike data from MATLAB export files and compute spike positions.
+
+<ParamField path="t" type="ndarray" required>
+  Time array from position data
+</ParamField>
+
+<ParamField path="x" type="ndarray" required>
+  X position coordinates
+</ParamField>
+
+<ParamField path="y" type="ndarray" required>
+  Y position coordinates
+</ParamField>
+
+<ParamField path="mat_import_parent_path" type="Path" default="Path(r'C:\Share\data\RoyMaze1')">
+  Parent directory containing exported spike data
+</ParamField>
+
+<ResponseField name="spike_matrix" type="ndarray">
+  Spike matrix (cells × time bins)
+</ResponseField>
+
+<ResponseField name="spike_cells" type="list">
+  Raw spike cell data structures
+</ResponseField>
+
+<ResponseField name="num_cells" type="int">
+  Number of cells
+</ResponseField>
+
+<ResponseField name="spike_list" type="list">
+  List of spike times for each cell
+</ResponseField>
+
+<ResponseField name="spike_positions_list" type="list">
+  List of spike positions (2×N arrays) for each cell
+</ResponseField>
+
+<ResponseField name="flat_cell_ids" type="list">
+  Flattened cell IDs
+</ResponseField>
+
+<ResponseField name="reverse_cellID_idx_lookup_map" type="dict">
+  Map from cell ID to linear index
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.import_data import (
+    perform_import_positions,
+    perform_import_spikes
+)
+from pathlib import Path
+
+# First import position data
+data_path = Path(r'C:\Share\data\RoyMaze1')
+t, x, y, speeds, dt, dx, dy = perform_import_positions(data_path)
+
+# Then import spike data
+(
+    spike_matrix,
+    spike_cells,
+    num_cells,
+    spike_list,
+    spike_positions_list,
+    flat_cell_ids,
+    reverse_cellID_idx_lookup_map
+) = perform_import_spikes(t, x, y, mat_import_parent_path=data_path)
+
+print(f"Imported {num_cells} cells")
+print(f"Cell IDs: {flat_cell_ids}")
+
+# Access spike positions for cell 0
+cell_0_positions = spike_positions_list[0]  # Shape: (2, n_spikes)
+print(f"Cell 0 has {cell_0_positions.shape[1]} spikes")
+```
+
+---
+
+### perform_import_extras
+
+Import additional experimental data including ripples and behavioral epochs.
+
+<ParamField path="mat_import_parent_path" type="Path" default="Path(r'C:\Share\data\RoyMaze1')">
+  Parent directory containing extra data files
+</ParamField>
+
+<ResponseField name="ripple_times" type="ndarray">
+  Start/end times for ripple events
+</ResponseField>
+
+<ResponseField name="ripple_peak_times" type="ndarray">
+  Peak times for ripple events
+</ResponseField>
+
+<ResponseField name="ripple_peak_values" type="ndarray">
+  Peak amplitude values for ripples
+</ResponseField>
+
+<ResponseField name="behavioral_periods" type="DataFrame">
+  DataFrame with columns: ['period_index', 'epoch_start_seconds', 'epoch_end_seconds', 'duration', 'type', 'behavioral_epoch']
+</ResponseField>
+
+<ResponseField name="behavioral_epochs" type="DataFrame">
+  DataFrame with columns: ['epoch_index', 'start_seconds_absolute', 'end_seconds_absolute', 'start_seconds', 'end_seconds', 'duration']
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.import_data import perform_import_extras
+from pathlib import Path
+
+data_path = Path(r'C:\Share\data\RoyMaze1')
+(
+    ripple_times,
+    ripple_peak_times,
+    ripple_peak_values,
+    behavioral_periods,
+    behavioral_epochs
+) = perform_import_extras(mat_import_parent_path=data_path)
+
+print(f"Found {len(ripple_times)} ripple events")
+print(f"\nBehavioral epochs:")
+print(behavioral_epochs.head())
+print(f"\nBehavioral periods:")
+print(behavioral_periods.head())
+```
+
+---
+
+## Visualization Window
+
+### VisualizationWindow
+
+Defines a sliding time window for visualization and animation.
+
+<ParamField path="duration_seconds" type="float" required>
+  Window duration in seconds
+</ParamField>
+
+<ParamField path="sampling_rate" type="float">
+  Sampling rate in Hz (alternative to duration_num_frames)
+</ParamField>
+
+<ParamField path="duration_num_frames" type="int">
+  Window duration in number of frames (alternative to sampling_rate)
+</ParamField>
+
+**Attributes:**
+
+- `duration_seconds` (float): Window duration in seconds
+- `duration_num_frames` (int): Window duration in number of samples
+
+**Methods:**
+
+- `build_sliding_windows(data)`: Build sliding windows over the data array
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.plotting.visualization_window import VisualizationWindow
+import numpy as np
+
+# Create a 10-second window at 30 Hz sampling rate
+window = VisualizationWindow(
+    duration_seconds=10.0,
+    sampling_rate=30.0
+)
+
+print(f"Window spans {window.duration_num_frames} frames")
+
+# Build sliding windows over position indices
+position_indices = np.arange(1000)
+windows = window.build_sliding_windows(position_indices)
+print(f"Created {len(windows)} windows")
+```
+
+---
+
+## See Also
+
+- [Computation Results](/api/data/computation-results) - Structure for storing computation outputs
+- [Decoder Results](/api/data/decoder-results) - Decoder-specific result structures
+- [PyQtPlot Visualization](/api/visualization/pyqt) - PyQt-based plotting tools

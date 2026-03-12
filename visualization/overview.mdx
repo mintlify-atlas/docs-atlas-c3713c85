@@ -1,0 +1,180 @@
+---
+title: Visualization Overview
+description: Comprehensive visualization system for neural data analysis
+icon: chart-line
+---
+
+pyPhoPlaceCellAnalysis provides a rich, multi-framework visualization ecosystem for neuroscience data analysis. The package supports multiple rendering backends and provides both 2D and 3D visualization capabilities.
+
+## Visualization Frameworks
+
+The package integrates with multiple visualization frameworks, each optimized for different use cases:
+
+<CardGroup cols={2}>
+  <Card title="2D Plotting" icon="chart-area" href="/visualization/2d-plots">
+    PyQtGraph, Matplotlib, and Plotly for high-performance 2D visualizations
+  </Card>
+  
+  <Card title="3D Visualization" icon="cube" href="/visualization/3d-visualization">
+    PyVista for interactive 3D spatial analysis and spike rendering
+  </Card>
+  
+  <Card title="GUI Tools" icon="window-maximize" href="/visualization/gui-tools">
+    Qt-based GUI components for interactive data exploration
+  </Card>
+  
+  <Card title="Interactive Widgets" icon="sliders" href="/visualization/interactive-widgets">
+    IPython widgets and Napari for Jupyter-based interaction
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Multi-Backend Support
+
+- **PyQtGraph**: Real-time, high-performance plotting for large datasets
+- **Matplotlib**: Publication-quality static figures
+- **Plotly**: Interactive web-based visualizations
+- **PyVista**: 3D spatial rendering with VTK backend
+- **Napari**: Multi-dimensional image viewing
+
+### Visualization Types
+
+<AccordionGroup>
+  <Accordion title="Spatial Visualizations">
+    - Place field heatmaps and tuning curves
+    - Animal trajectory plots
+    - 2D and 3D spatial occupancy maps
+    - Binned image rendering windows
+  </Accordion>
+  
+  <Accordion title="Temporal Visualizations">
+    - Raster plots for spike trains
+    - Time-synchronized multi-panel displays
+    - Stacked epoch slices
+    - Event plots with color-coded neurons
+  </Accordion>
+  
+  <Accordion title="Statistical Plots">
+    - Heatmaps with customizable colormaps
+    - Correlation matrices
+    - Trial-by-trial activity visualization
+    - Decoder output visualization
+  </Accordion>
+</AccordionGroup>
+
+## Architecture
+
+```
+pyphoplacecellanalysis/
+├── Pho2D/                    # 2D plotting modules
+│   ├── PyQtPlots/           # PyQtGraph-based plots
+│   ├── matplotlib/          # Matplotlib integration
+│   └── plotly/              # Plotly integration
+├── Pho3D/                    # 3D visualization modules
+│   └── PyVista/             # PyVista-based 3D rendering
+└── GUI/                      # GUI components
+    ├── PyQtPlot/            # Qt-based interfaces
+    ├── Napari/              # Napari integration
+    └── IPyWidgets/          # Jupyter widgets
+```
+
+## Quick Start
+
+### Basic 2D Heatmap
+
+```python
+from pyphoplacecellanalysis.Pho2D.matplotlib.visualize_heatmap import visualize_heatmap
+import numpy as np
+
+# Create sample data
+data = np.random.rand(10, 10)
+
+# Visualize with matplotlib
+fig, ax, im = visualize_heatmap(
+    data,
+    title="Neural Activity Heatmap",
+    show_colorbar=True
+)
+```
+
+### PyQtGraph Interactive Plot
+
+```python
+from pyphoplacecellanalysis.Pho2D.PyQtPlots.plot_placefields import display_all_pf_2D_pyqtgraph_binned_image_rendering
+
+# Display place fields
+out_fig = display_all_pf_2D_pyqtgraph_binned_image_rendering(
+    active_pf_2D,
+    figure_format_config
+)
+```
+
+### 3D Spike Visualization
+
+```python
+import pyvista as pv
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import perform_plot_flat_arena
+
+# Create 3D plotter
+p = pv.Plotter()
+
+# Plot arena and spikes
+perform_plot_flat_arena(p, x_positions, y_positions)
+p.show()
+```
+
+## Design Principles
+
+<Note>
+  All visualization modules follow consistent design patterns:
+  - **Data-driven**: Automatically scale and format based on input data
+  - **Configurable**: Extensive customization through format configs
+  - **Composable**: Mix and match different visualization components
+  - **Performance**: Optimized for large neural datasets
+</Note>
+
+## Color Management
+
+The package includes sophisticated colormap generation:
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.plot_data import generate_colormap
+
+# Generate distinct colors for neurons
+cmap = generate_colormap(number_of_distinct_colors=80)
+```
+
+## Next Steps
+
+<Steps>
+  <Step title="Explore 2D Plots">
+    Learn about matplotlib, PyQtGraph, and Plotly integration
+  </Step>
+  
+  <Step title="Try 3D Visualization">
+    Create interactive 3D spatial visualizations with PyVista
+  </Step>
+  
+  <Step title="Build GUIs">
+    Develop custom GUI tools with Qt components
+  </Step>
+  
+  <Step title="Add Interactivity">
+    Enhance notebooks with IPython widgets and Napari
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+| Task | Framework | Module |
+|------|-----------|--------|
+| Place field plotting | PyQtGraph | `Pho2D.PyQtPlots.plot_placefields` |
+| Publication figures | Matplotlib | `Pho2D.matplotlib.visualize_heatmap` |
+| Interactive exploration | Plotly | `Pho2D.plotly` |
+| 3D spatial rendering | PyVista | `Pho3D.PyVista.spikeAndPositions` |
+| Multi-dimensional viewing | Napari | `GUI.Napari.napari_helpers` |
+
+<Warning>
+  Some visualization backends require GUI event loops. Use `pg.exec()` for PyQtGraph or `p.show()` for PyVista to start the event loop when running standalone scripts.
+</Warning>

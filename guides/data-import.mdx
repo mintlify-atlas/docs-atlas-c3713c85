@@ -1,0 +1,202 @@
+---
+title: 'Data Import'
+description: 'Import neural and behavioral data into pyPhoPlaceCellAnalysis'
+icon: 'file-import'
+---
+
+## Overview
+
+The data import system in pyPhoPlaceCellAnalysis provides flexible methods for loading neural recordings, position data, and behavioral epochs. The framework supports multiple data formats and provides utilities for interpolating spike positions and building comprehensive session data.
+
+## Importing Position Data
+
+Position data forms the foundation of spatial analysis. The framework provides utilities to load and process position information from MATLAB files.
+
+<Steps>
+  <Step title="Load Position Data">
+    Use `perform_import_positions()` to load position data from exported MATLAB files:
+
+    ```python
+    from pathlib import Path
+    from pyphoplacecellanalysis.PhoPositionalData.import_data import perform_import_positions
+
+    # Define the data directory
+    mat_import_parent_path = Path(r'/path/to/data/RoyMaze1')
+
+    # Import position data
+    t, x, y, speeds, dt, dx, dy = perform_import_positions(
+        mat_import_parent_path=mat_import_parent_path
+    )
+
+    print(f'Position data shapes - t: {t.shape}, x: {x.shape}, y: {y.shape}')
+    ```
+
+    This returns:
+    - `t`: timestamps
+    - `x`, `y`: position coordinates
+    - `speeds`: velocity values
+    - `dt`, `dx`, `dy`: temporal and spatial derivatives
+  </Step>
+
+  <Step title="Import Spike Data">
+    Load spike timing and neuron information:
+
+    ```python
+    from pyphoplacecellanalysis.PhoPositionalData.import_data import perform_import_spikes
+
+    # Import spike data (requires position data first)
+    spike_matrix, spike_cells, num_cells, spike_list, \
+    spike_positions_list, flat_cell_ids, reverse_cellID_idx_lookup_map = \
+        perform_import_spikes(t, x, y, mat_import_parent_path=mat_import_parent_path)
+
+    print(f'Number of cells: {num_cells}')
+    print(f'Cell IDs: {flat_cell_ids}')
+    ```
+
+    The function returns:
+    - `spike_matrix`: raw spike matrix
+    - `spike_cells`: spike data for each cell
+    - `num_cells`: total number of neurons
+    - `spike_list`: list of spike times per neuron
+    - `spike_positions_list`: interpolated positions at spike times
+    - `flat_cell_ids`: neuron identifiers
+    - `reverse_cellID_idx_lookup_map`: mapping from cell IDs to array indices
+  </Step>
+
+  <Step title="Build Spike Positions">
+    Interpolate positions where spikes occurred:
+
+    ```python
+    from pyphoplacecellanalysis.PhoPositionalData.import_data import build_spike_positions_list
+    import numpy as np
+
+    # Build interpolated spike positions
+    spike_positions_list = build_spike_positions_list(
+        spike_list, t, x, y
+    )
+
+    # Access spike positions for a specific cell
+    cell_id = 0
+    cell_spike_positions = spike_positions_list[cell_id]
+    print(f'Spike positions shape for cell {cell_id}: {cell_spike_positions.shape}')
+    # Output: (2, n_spikes) - [x_positions, y_positions]
+    ```
+  </Step>
+</Steps>
+
+## Importing Behavioral Data
+
+Import behavioral epochs, ripple events, and other experimental markers:
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.import_data import perform_import_extras
+import pandas as pd
+
+# Import behavioral periods and ripple events
+ripple_times, ripple_peak_times, ripple_peak_values, \
+behavioral_periods, behavioral_epochs = perform_import_extras(
+    mat_import_parent_path=mat_import_parent_path
+)
+
+# Behavioral epochs DataFrame
+print(behavioral_epochs.head())
+# Columns: epoch_index, start_seconds_absolute, end_seconds_absolute, 
+#          start_seconds, end_seconds, duration
+
+# Behavioral periods DataFrame  
+print(behavioral_periods.head())
+# Columns: period_index, epoch_start_seconds, epoch_end_seconds,
+#          duration, type, behavioral_epoch
+```
+
+## Using the Pipeline for Data Loading
+
+<Tip>
+For most use cases, use the `NeuropyPipeline` which handles data loading automatically:
+</Tip>
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from neuropy.core.session.Formats.BaseDataSessionFormats import DataSessionFormatRegistryHolder
+from pathlib import Path
+
+# Initialize pipeline
+curr_kdiba_pipeline = NeuropyPipeline(
+    basedir=Path(r'/path/to/data/session'),
+    session_name='kdiba_2006-6-07_11-26-53'
+)
+
+# Load session data
+curr_kdiba_pipeline.load_data()
+
+# Access loaded data
+sess = curr_kdiba_pipeline.sess
+print(f'Session duration: {sess.duration} seconds')
+print(f'Number of neurons: {sess.n_neurons}')
+print(f'Position data shape: {sess.position.x.shape}')
+```
+
+## Data Format Requirements
+
+<Note>
+The import functions expect MATLAB files with specific structures:
+
+**Position Data** (`positionAnalysis.mat`):
+- `t`: time vector
+- `x`, `y`: position coordinates
+- `v` or `speed`: velocity data
+
+**Spike Data** (`spikesAnalysis.mat`):
+- `spike_matrix`: binary spike matrix
+- `spike_cells`: cell-wise spike data
+- `spike_cells_ids`: neuron identifiers
+
+**Extra Data** (`extrasAnalysis.mat`):
+- `behavioral_periods`: behavioral epoch information
+- `behavioral_epochs`: epoch boundaries
+</Note>
+
+## Complete Import Example
+
+```python
+from pathlib import Path
+from pyphoplacecellanalysis.PhoPositionalData.import_data import (
+    perform_import_positions,
+    perform_import_spikes,
+    perform_import_extras
+)
+
+# Set data path
+data_path = Path(r'/path/to/data/RoyMaze1')
+
+# Step 1: Import position data
+t, x, y, speeds, dt, dx, dy = perform_import_positions(
+    mat_import_parent_path=data_path
+)
+
+# Step 2: Import spike data
+spike_matrix, spike_cells, num_cells, spike_list, \
+spike_positions_list, flat_cell_ids, reverse_cellID_idx_lookup_map = \
+    perform_import_spikes(t, x, y, mat_import_parent_path=data_path)
+
+# Step 3: Import behavioral data
+ripple_times, ripple_peak_times, ripple_peak_values, \
+behavioral_periods, behavioral_epochs = perform_import_extras(
+    mat_import_parent_path=data_path
+)
+
+print(f'Successfully imported session with {num_cells} cells')
+print(f'Position tracking: {len(t)} samples')
+print(f'Behavioral epochs: {len(behavioral_epochs)}')
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Running Pipeline" icon="play" href="/guides/running-pipeline">
+    Learn how to process your imported data through the analysis pipeline
+  </Card>
+  <Card title="Batch Processing" icon="layer-group" href="/guides/batch-processing">
+    Process multiple sessions efficiently
+  </Card>
+</CardGroup>

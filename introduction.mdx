@@ -1,0 +1,123 @@
+---
+title: Introduction
+description: Learn about pyPhoPlaceCellAnalysis, a comprehensive Python library for analyzing hippocampal place cell data
+---
+
+## What is pyPhoPlaceCellAnalysis?
+
+pyPhoPlaceCellAnalysis is a specialized Python library designed for computational neuroscience researchers studying hippocampal place cells and spatial navigation. It provides a comprehensive suite of tools for analyzing neural data from place cell recordings, implementing state-of-the-art Bayesian decoding algorithms, and visualizing complex spatiotemporal neural dynamics.
+
+<Note>
+  pyPhoPlaceCellAnalysis is built on top of [NeuroPy](https://github.com/CommanderPho/NeuroPy), providing a higher-level interface specifically designed for place cell analysis workflows.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Bayesian Position Decoding" icon="brain">
+    Implementation of Zhang et al.'s Bayesian reconstruction algorithm for decoding animal position from neural activity. Supports both 1D and 2D spatial environments.
+  </Card>
+  
+  <Card title="Replay Detection & Scoring" icon="gauge-high">
+    Advanced algorithms for detecting and scoring hippocampal replay events, including heuristic replay scoring and context-dependent analysis.
+  </Card>
+  
+  <Card title="Pipeline Architecture" icon="diagram-project">
+    Structured multi-stage pipeline for reproducible analysis workflows: Input/Loading → Filtering → Computation → Display.
+  </Card>
+  
+  <Card title="Interactive Visualization" icon="chart-line">
+    Rich visualization tools using PyQt, Napari, Matplotlib, and Plotly for exploring place fields, decoded positions, and replay events.
+  </Card>
+</CardGroup>
+
+## What Problems Does It Solve?
+
+### For Neuroscience Researchers
+
+Analyzing hippocampal place cell data involves complex computational challenges:
+
+- **Bayesian Decoding**: Implementing probabilistic algorithms to decode animal position from population spike activity
+- **Replay Analysis**: Detecting and characterizing replay events during rest and sleep
+- **Multi-Session Analysis**: Managing and comparing results across multiple recording sessions
+- **Reproducibility**: Ensuring analysis pipelines are consistent and can be rerun with different parameters
+- **Visualization**: Creating publication-quality figures and interactive exploratory tools
+
+pyPhoPlaceCellAnalysis addresses these challenges with a unified, well-tested framework that handles the computational heavy lifting while remaining flexible for custom analyses.
+
+## Pipeline Architecture
+
+The library is built around the `NeuropyPipeline` class, which organizes analysis into four distinct stages:
+
+<Steps>
+  <Step title="Input/Loading">
+    Load raw neural data from various formats (Klustakwik, Phy, etc.) and configure session parameters.
+  </Step>
+  
+  <Step title="Filtering">
+    Filter sessions by epochs (maze running, sleep, etc.) and neurons (pyramidal cells, interneurons).
+  </Step>
+  
+  <Step title="Computation">
+    Compute place fields, decode positions, detect replay events, and perform statistical analyses.
+  </Step>
+  
+  <Step title="Display">
+    Generate visualizations, export results, and save outputs for publication or further analysis.
+  </Step>
+</Steps>
+
+Each stage builds upon the previous one, with results cached to disk for efficient reloading.
+
+## Target Audience
+
+This library is designed for:
+
+- **Computational Neuroscientists** analyzing hippocampal recordings
+- **Systems Neuroscientists** studying spatial navigation and memory
+- **Graduate Students and Postdocs** working with place cell data
+- **Labs** standardizing their analysis pipelines across projects
+
+<Warning>
+  pyPhoPlaceCellAnalysis requires familiarity with Python programming and basic understanding of hippocampal place cell physiology. If you're new to place cell analysis, we recommend reviewing the foundational literature on Bayesian decoding and replay detection.
+</Warning>
+
+## Core Components
+
+### Data Structures
+
+- **NeuropyPipeline**: Main pipeline orchestrator managing all analysis stages
+- **BasePositionDecoder**: Base class for position decoding algorithms
+- **BayesianPlacemapPositionDecoder**: Bayesian position decoder implementation
+- **DecodedFilterEpochsResult**: Container for decoded epoch results
+
+### Key Modules
+
+- `pyphoplacecellanalysis.General.Pipeline`: Pipeline infrastructure and stage management
+- `pyphoplacecellanalysis.Analysis.Decoder`: Position decoding and reconstruction algorithms
+- `pyphoplacecellanalysis.GUI`: Interactive visualization widgets (PyQt, Napari)
+- `pyphoplacecellanalysis.Pho2D`: 2D plotting and visualization utilities
+- `pyphoplacecellanalysis.General.Batch`: Batch processing for multiple sessions
+
+## Built on Solid Foundations
+
+pyPhoPlaceCellAnalysis leverages several powerful scientific Python libraries:
+
+- **NeuroPy**: Core neurophysiology data structures and algorithms
+- **NumPy/Pandas**: Efficient numerical computing and data manipulation
+- **SciPy**: Statistical functions and optimization
+- **PyQt5/Napari**: Interactive GUI components
+- **Matplotlib/Plotly**: Publication-quality plotting
+- **HDF5/Tables**: Efficient data persistence
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Get pyPhoPlaceCellAnalysis installed on your system
+  </Card>
+  
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run your first analysis in minutes
+  </Card>
+</CardGroup>

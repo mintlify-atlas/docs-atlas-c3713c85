@@ -1,0 +1,453 @@
+---
+title: 'Data Loading'
+description: 'Loading electrophysiology sessions, spikes, and positional data'
+icon: 'file-import'
+---
+
+## Overview
+
+PyPhoPlaceCellAnalysis provides flexible data loading capabilities that support multiple experimental formats and data structures. The loading system is integrated into the pipeline architecture and handles sessions, spikes, position data, and behavioral epochs.
+
+## Data Formats Supported
+
+The library supports several electrophysiology data formats through the `neuropy` session loading system:
+
+<CardGroup cols={2}>
+  <Card title="Kdiba Format" icon="k">
+    Standard format from the Diba lab
+  </Card>
+  <Card title="Bapun Format" icon="b">
+    Alternative experimental format
+  </Card>
+  <Card title="Custom Formats" icon="gear">
+    Extensible format registration system
+  </Card>
+  <Card title="HDF5 Export" icon="file-code">
+    Export and reimport as HDF5
+  </Card>
+</CardGroup>
+
+## Loading Sessions
+
+### Basic Session Loading
+
+The primary way to load data is through the pipeline:
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from neuropy.core.session.KnownDataSessionTypeProperties import KnownDataSessionTypeProperties
+from pathlib import Path
+
+# Define session properties
+basepath = Path('/path/to/data/session')
+known_data_session_type_dict = {
+    'kdiba': KnownDataSessionTypeProperties(
+        basedir=basepath,
+        load_function=lambda path: DataSession.from_kdiba(path)
+    )
+}
+
+# Initialize pipeline with automatic loading
+curr_active_pipeline = NeuropyPipeline.init_from_known_data_session_type(
+    'kdiba',
+    known_data_session_type_dict['kdiba'],
+    override_basepath=basepath
+)
+
+# Access the loaded session
+sess = curr_active_pipeline.sess
+```
+
+### Loading with Pickle Caching
+
+For faster subsequent loads, use pickle caching:
+
+```python
+# Try to load from pickle, or reload from raw data if needed
+curr_active_pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba'],
+    override_basepath=basepath,
+    active_pickle_filename='loadedSessPickle.pkl',
+    force_reload=False,  # Set True to bypass pickle
+    progress_print=True
+)
+```
+
+<Note>
+Pickle files can dramatically speed up loading (seconds vs. minutes), but contain the entire session state.
+</Note>
+
+## Session Data Structure
+
+### Core Session Properties
+
+A loaded session contains multiple data components:
+
+```python
+# Session metadata
+sess.name              # Session identifier
+sess.config            # Configuration parameters  
+sess.basepath          # Path to session data
+sess.filePrefix        # File naming prefix
+
+# Neural data
+sess.spikes_df         # DataFrame of all spikes
+sess.neurons           # Neuron properties
+
+# Positional data
+sess.position          # Position tracking data
+
+# Behavioral data  
+sess.epochs            # Behavioral epochs (sleep, maze, etc.)
+sess.laps              # Lap information for track tasks
+```
+
+## Spike Data
+
+### Spikes DataFrame
+
+Spikes are stored in a pandas DataFrame with special accessors:
+
+```python
+# Access spikes DataFrame
+spikes_df = sess.spikes_df
+
+# Key columns:
+# - 't' or 't_rel_seconds': spike timestamps
+# - 'aclu': neuron ID (cluster unit)
+# - 'shank': electrode shank
+# - 'cluster': cluster ID
+# - 'qclu': quality metric
+
+# Use spikes accessor for special operations
+time_variable_name = spikes_df.spikes.time_variable_name  # 't_rel_seconds'
+
+# Filter by neuron
+neuron_5_spikes = spikes_df[spikes_df['aclu'] == 5]
+
+# Filter by time
+epoch_spikes = spikes_df[(spikes_df['t_rel_seconds'] >= start_t) & 
+                         (spikes_df['t_rel_seconds'] <= end_t)]
+```
+
+### Spike Counts and Rates
+
+Compute binned spike activity:
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import ZhangReconstructionImplementation
+
+# Bin spikes temporally
+time_bin_size = 0.02  # 20ms bins
+unit_specific_binned_spike_counts, time_window_edges, time_window_edges_binning_info = \
+    ZhangReconstructionImplementation.time_bin_spike_counts_N_i(
+        sess.spikes_df.copy(), 
+        time_bin_size=time_bin_size,
+        debug_print=False
+    )
+
+# Output shape: (n_neurons, n_time_bins)
+print(f"Shape: {unit_specific_binned_spike_counts.shape}")
+# Example: (108, 4188) for 108 neurons across 4188 time bins
+```
+
+## Positional Data
+
+### Position Tracking
+
+Position data includes x, y coordinates and derived quantities:
+
+```python
+# Access position data
+position = sess.position
+
+# Position properties
+position.t             # timestamps
+position.x             # x coordinates (cm)
+position.y             # y coordinates (cm)  
+position.speed         # instantaneous speed
+position.linear_pos    # linearized position (for tracks)
+
+# Position stats
+print(f"Duration: {position.t[-1] - position.t[0]:.2f} seconds")
+print(f"Position range: x=[{position.x.min():.1f}, {position.x.max():.1f}], "
+      f"y=[{position.y.min():.1f}, {position.y.max():.1f}] cm")
+```
+
+### Position Import
+
+Custom position data can be imported from various sources:
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.import_data import (
+    perform_import_positions,
+    build_spike_positions_list
+)
+
+# Import from MATLAB .mat files
+t, x, y, speeds, dt, dx, dy = perform_import_positions(
+    mat_import_parent_path=Path('data/session')
+)
+
+# Interpolate spike positions
+spike_positions_list = build_spike_positions_list(
+    spike_list=spike_times_per_neuron,
+    t=position.t,
+    x=position.x, 
+    y=position.y
+)
+# Returns list of (2, n_spikes) arrays with [x, y] positions per neuron
+```
+
+### Linearized Position
+
+For track experiments, position is often linearized:
+
+```python
+# Access linearized position (already computed in most formats)
+linear_pos = sess.position.linear_pos  # Position along track
+
+# Typical usage in place field computation
+from neuropy.analyses.placefields import PlacefieldComputationParameters
+
+pf_params = PlacefieldComputationParameters(
+    speed_thresh=10.0,          # cm/s minimum speed
+    grid_bin=(5.0,),            # 5cm bins for 1D
+    smooth=(2.0,),              # Smoothing sigma
+    frate_thresh=0.2,           # Minimum firing rate
+    time_bin_size=0.02          # 20ms time bins
+)
+```
+
+## Behavioral Epochs
+
+### Loading Epochs
+
+Behavioral epochs segment the session:
+
+```python
+# Access epochs
+epochs = sess.epochs
+
+# Common epoch types:
+# - 'maze': active behavior on track
+# - 'sleep': sleep/rest periods  
+# - 'pre_sleep': before behavior
+# - 'post_sleep': after behavior
+
+# Get specific epoch
+maze_epoch = epochs['maze']
+print(f"Maze duration: {maze_epoch.duration:.2f} seconds")
+print(f"Start: {maze_epoch.start}, Stop: {maze_epoch.stop}")
+```
+
+### Epoch DataFrame
+
+Epochs can be converted to DataFrames:
+
+```python
+from neuropy.core.epoch import ensure_dataframe
+
+# Convert to DataFrame
+epochs_df = ensure_dataframe(epochs)
+
+# DataFrame columns:
+# - 'start': epoch start time
+# - 'stop': epoch end time  
+# - 'label': epoch name/type
+# - 'duration': stop - start
+
+print(epochs_df)
+```
+
+### Filtering by Epochs
+
+Extract data within specific epochs:
+
+```python
+# Get spikes during maze epoch
+maze_start, maze_stop = epochs['maze'].start, epochs['maze'].stop
+maze_spikes = spikes_df[
+    (spikes_df['t_rel_seconds'] >= maze_start) & 
+    (spikes_df['t_rel_seconds'] <= maze_stop)
+]
+
+# Position during maze
+maze_pos_mask = (position.t >= maze_start) & (position.t <= maze_stop)
+maze_x = position.x[maze_pos_mask]
+maze_y = position.y[maze_pos_mask]
+```
+
+## Data Loading Functions
+
+### Save and Load Utilities
+
+The pipeline provides serialization functions:
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.Stages.Loading import saveData, loadData
+
+# Save any Python object
+saveData('my_data.pkl', data_object, safe_save=True)
+
+# Load pickled object
+loaded_data = loadData('my_data.pkl', debug_print=False)
+```
+
+<Accordion title="Safe Save Mode">
+When `safe_save=True` (default), data is first saved to a temporary file, then replaces the original only if successful. This prevents corruption from interrupted saves.
+</Accordion>
+
+### Custom Load Functions
+
+Register custom data loaders:
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.Stages.LoadFunctions.LoadFunctionRegistryHolder import LoadFunctionRegistryHolder
+
+class MyCustomLoader(metaclass=LoadFunctionRegistryHolder):
+    @classmethod
+    def load_my_format(cls, basepath):
+        """Custom loader for specific data format"""
+        # Load and return DataSession object
+        return custom_session
+
+# Register in known types
+known_data_session_type_dict['my_format'] = KnownDataSessionTypeProperties(
+    basedir=my_basepath,
+    load_function=MyCustomLoader.load_my_format
+)
+```
+
+## Data Quality and Filtering
+
+### Quality Metrics
+
+Filter neurons by quality:
+
+```python
+# Filter by cluster quality (qclu)
+# 1 = excellent, 2 = good, 3+ = poor/noise
+included_qclu_values = [1, 2, 4, 6, 7, 9]
+
+good_neurons_mask = spikes_df['qclu'].isin(included_qclu_values)
+good_spikes = spikes_df[good_neurons_mask]
+```
+
+### Minimum Firing Rate
+
+Filter low-activity neurons:
+
+```python
+# Compute firing rates
+neuron_ids = spikes_df['aclu'].unique()
+session_duration = sess.duration
+
+firing_rates = {}
+for neuron_id in neuron_ids:
+    n_spikes = (spikes_df['aclu'] == neuron_id).sum()
+    firing_rates[neuron_id] = n_spikes / session_duration
+
+# Filter by minimum rate
+min_fr_hz = 2.0
+active_neurons = [nid for nid, fr in firing_rates.items() if fr >= min_fr_hz]
+print(f"Active neurons (>={min_fr_hz} Hz): {len(active_neurons)}/{len(neuron_ids)}")
+```
+
+## Common Loading Patterns
+
+<Tabs>
+  <Tab title="Quick Load">
+    ```python
+    # Fastest way to get started
+    from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+    
+    pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+        'kdiba', known_data_session_type_dict['kdiba'],
+        active_pickle_filename='loadedSessPickle.pkl'
+    )
+    
+    sess = pipeline.sess
+    spikes = sess.spikes_df
+    position = sess.position
+    ```
+  </Tab>
+  
+  <Tab title="Custom Parameters">
+    ```python
+    # Load with specific filtering
+    pipeline = NeuropyPipeline.init_from_known_data_session_type(
+        'kdiba', known_data_session_type_dict['kdiba']
+    )
+    
+    # Apply quality filters before computation
+    pipeline.sess.spikes_df = pipeline.sess.spikes_df[
+        pipeline.sess.spikes_df['qclu'].isin([1, 2, 4])
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="Memory Efficient">
+    ```python
+    # For large datasets, load minimal data
+    pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+        'kdiba', known_data_session_type_dict['kdiba'],
+        skip_save_on_initial_load=True  # Don't auto-save
+    )
+    
+    # Work with subsets
+    time_range = (100, 200)  # seconds
+    subset_spikes = pipeline.sess.spikes_df[
+        (pipeline.sess.spikes_df['t_rel_seconds'] >= time_range[0]) &
+        (pipeline.sess.spikes_df['t_rel_seconds'] <= time_range[1])
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="FileNotFoundError during load">
+    Check that `basepath` points to the correct session directory containing the expected data files (`.xml`, `.dat`, spike files, etc.).
+  </Accordion>
+  
+  <Accordion title="EOFError loading pickle">
+    Pickle file is corrupted. Delete it and reload from raw data:
+    ```python
+    pickle_path.unlink()  # Delete corrupted file
+    pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+        ..., force_reload=True
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Memory errors with large sessions">
+    Use pickle caching and avoid loading unnecessary data:
+    ```python
+    # Save after initial load
+    pipeline.save_pipeline()  
+    
+    # Later, quick load from pickle
+    pipeline = loadData('loadedSessPickle.pkl')
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Pipeline Architecture" icon="diagram-project" href="/concepts/pipeline">
+    Learn how loaded data flows through the pipeline
+  </Card>
+  <Card title="Place Cells" icon="map-marker" href="/concepts/place-cells">
+    Compute place fields from loaded spike and position data
+  </Card>
+  <Card title="Filtering Sessions" icon="filter" href="/guides/running-pipeline">
+    Create filtered analysis sessions
+  </Card>
+  <Card title="Data Structures" icon="database" href="/api/data/positional-data">
+    Detailed reference for session objects
+  </Card>
+</CardGroup>

@@ -1,0 +1,405 @@
+---
+title: 'ComputationResult'
+description: 'Store and access computation results, configurations, and errors'
+icon: 'database'
+---
+
+## Overview
+
+The `ComputationResult` class stores the output of computations performed on a filtered session. It maintains:
+
+- The input data session
+- Computation configuration/parameters used
+- Computed output data
+- Errors that occurred during computation
+- Timing information for each computation
+
+## Class Definition
+
+```python
+@custom_define(slots=False)
+class ComputationResult(
+    SimpleFieldSizesReprMixin,
+    HDF_SerializationMixin,
+    AttrsBasedClassHelperMixin,
+    GetAccessibleMixin,
+    PickleSerializableMixin
+)
+```
+
+Location: `pyphoplacecellanalysis/General/Model/ComputationResults.py:107`
+
+## Fields
+
+### `sess`
+
+<ParamField path="sess" type="DataSession" required>
+  The data session this computation was performed on (typically a filtered session)
+</ParamField>
+
+### `computation_config`
+
+<ParamField path="computation_config" type="DynamicParameters" optional>
+  Configuration parameters used for the computation (e.g., PlacefieldComputationParameters)
+</ParamField>
+
+### `computed_data`
+
+<ParamField path="computed_data" type="DynamicParameters" optional>
+  Dictionary-like container storing all computed results, keyed by computation name
+</ParamField>
+
+### `accumulated_errors`
+
+<ParamField path="accumulated_errors" type="DynamicParameters" default="DynamicParameters()">
+  Dictionary of exceptions that occurred during computation, keyed by function that failed
+</ParamField>
+
+### `computation_times`
+
+<ParamField path="computation_times" type="DynamicParameters" default="DynamicParameters()">
+  Dictionary of completion timestamps for each computation function
+</ParamField>
+
+## Initialization
+
+### Direct Initialization
+
+```python
+from pyphoplacecellanalysis.General.Model.ComputationResults import ComputationResult
+from pyphocorehelpers.DataStructure.dynamic_parameters import DynamicParameters
+
+# Create a new computation result
+result = ComputationResult(
+    sess=filtered_session,
+    computation_config=computation_params,
+    computed_data=DynamicParameters(),
+    accumulated_errors=DynamicParameters(),
+    computation_times=DynamicParameters()
+)
+```
+
+### From Pipeline
+
+Typically created automatically by the pipeline:
+
+```python
+# Results are created automatically during computation
+curr_pipeline.perform_computations()
+
+# Access results
+result = curr_pipeline.computation_results['maze1']
+```
+
+## Accessing Computed Data
+
+### Accessing Results by Key
+
+```python
+# Get computation result for a specific filter
+result = curr_pipeline.computation_results['maze1']
+
+# Access specific computed data
+pf2D = result.computed_data['pf2D']  # 2D place fields
+pf1D = result.computed_data['pf1D']  # 1D place fields
+decoder = result.computed_data['pf2D_Decoder']  # Decoder
+
+# List all computed data
+print(f"Available data: {list(result.computed_data.keys())}")
+```
+
+### Common Computed Data Keys
+
+Filter-specific (non-global) computations:
+
+- `pf1D` - 1D place fields
+- `pf2D` - 2D place fields  
+- `pf1D_dt` - Time-dependent 1D place fields
+- `pf2D_dt` - Time-dependent 2D place fields
+- `pf2D_Decoder` - Bayesian decoder
+- `extended_stats` - Extended statistics
+- `firing_rate_trends` - Firing rate analysis
+- `velocity_vs_pf_simplified_count_density` - Velocity vs position analysis
+
+Global computations (in `global_computation_results`):
+
+- `long_short_fr_indicies_analysis` - Long/short track firing rate indices
+- `long_short_post_decoding` - Post-decoding analysis
+- `jonathan_firing_rate_analysis` - Jonathan's firing rate analysis
+- `merged_directional_placefields` - Directional place fields
+- `long_short_decoding_analyses` - Decoding comparisons
+- `directional_decoders_decode_continuous` - Continuous directional decoding
+
+### Example: Accessing Place Fields
+
+```python
+# Get place field computation results
+result = curr_pipeline.computation_results['maze1']
+pf2D = result.computed_data['pf2D']
+
+# Access place field properties
+print(f"Number of cells: {pf2D.ratemap.n_neurons}")
+print(f"Position bins X: {pf2D.ratemap.xbin}")
+print(f"Position bins Y: {pf2D.ratemap.ybin}")
+print(f"Ratemap shape: {pf2D.ratemap.occupancy.shape}")
+
+# Get neuron IDs
+neuron_ids = pf2D.ratemap.neuron_ids
+print(f"Neuron IDs: {neuron_ids}")
+```
+
+## Error Handling
+
+### Checking for Errors
+
+```python
+result = curr_pipeline.computation_results['maze1']
+
+# Check if any errors occurred
+if len(result.accumulated_errors) > 0:
+    print(f"Found {len(result.accumulated_errors)} errors")
+    
+    # Iterate through errors
+    for failed_function, exception in result.accumulated_errors.items():
+        print(f"\nFunction: {failed_function.__name__}")
+        print(f"Error: {exception}")
+        print(f"Exception type: {type(exception.e)}")
+        print(f"Traceback: {exception.exception_info}")
+```
+
+### Clearing Errors
+
+```python
+# Clear accumulated errors after fixing issues
+result.accumulated_errors.clear()
+
+# Or clear all errors across all filters
+for filter_name, result in curr_pipeline.computation_results.items():
+    result.accumulated_errors.clear()
+```
+
+## Timing Information
+
+### Accessing Computation Times
+
+```python
+from datetime import datetime
+
+result = curr_pipeline.computation_results['maze1']
+
+# Get completion times for each computation
+for fn_name, completion_time in result.computation_times.items():
+    print(f"{fn_name}: completed at {completion_time}")
+
+# Find most recent computation
+if len(result.computation_times) > 0:
+    latest_time = max(result.computation_times.values())
+    print(f"Most recent computation: {latest_time}")
+    
+    # Time since last computation
+    time_delta = datetime.now() - latest_time
+    print(f"Time since last computation: {time_delta}")
+```
+
+### Example: Pipeline-wide Timing
+
+```python
+# Get timing info across all filters and global computations
+latest_time, epoch_times, detailed_times, global_times = \
+    curr_pipeline.stage.get_computation_times()
+
+print(f"Latest computation anywhere: {latest_time}")
+
+print("\nPer-filter latest times:")
+for filter_name, time in epoch_times.items():
+    print(f"  {filter_name}: {time}")
+
+print("\nDetailed computation times:")
+for filter_name, times_dict in detailed_times.items():
+    print(f"  {filter_name}:")
+    for fn_name, time in times_dict.items():
+        print(f"    {fn_name}: {time}")
+```
+
+## Configuration Access
+
+### Viewing Computation Parameters
+
+```python
+result = curr_pipeline.computation_results['maze1']
+config = result.computation_config
+
+# Access place field parameters
+pf_params = config.pf_params
+print(f"Speed threshold: {pf_params.speed_thresh}")
+print(f"Grid bin: {pf_params.grid_bin}")
+print(f"Smoothing: {pf_params.smooth}")
+print(f"Firing rate threshold: {pf_params.frate_thresh}")
+print(f"Time bin size: {pf_params.time_bin_size}")
+
+# Access spike analysis parameters  
+spike_params = config.spike_analysis
+print(f"Max spikes per neuron: {spike_params.max_num_spikes_per_neuron}")
+```
+
+### Updating Configuration
+
+```python
+# Update config from pipeline
+result.update_config_from_pipeline(curr_active_pipeline)
+
+# Or initialize new config from pipeline
+from pyphoplacecellanalysis.General.Model.ComputationResults import ComputationResult
+
+new_config = ComputationResult.init_config_from_pipeline(curr_active_pipeline)
+result.computation_config = new_config
+```
+
+## Global Computation Results
+
+### Accessing Global Results
+
+```python
+# Global results are stored separately
+global_result = curr_pipeline.global_computation_results
+
+# Access global computed data
+long_short_fr = global_result.computed_data['long_short_fr_indicies_analysis']
+long_short_decoding = global_result.computed_data['long_short_post_decoding']
+jonathanFR = global_result.computed_data['jonathan_firing_rate_analysis']
+
+# List all global computations
+print(f"Global computations: {list(global_result.computed_data.keys())}")
+```
+
+### Example: Long/Short Analysis
+
+```python
+global_result = curr_pipeline.global_computation_results
+
+# Get long/short firing rate indices
+fr_analysis = global_result.computed_data['long_short_fr_indicies_analysis']
+x_frs_index = fr_analysis['x_frs_index']  # Long track indices
+y_frs_index = fr_analysis['y_frs_index']  # Short track indices
+
+print(f"Cells with indices: {len(x_frs_index)}")
+
+# Iterate through cells
+for aclu in x_frs_index.keys():
+    long_idx = x_frs_index[aclu]
+    short_idx = y_frs_index[aclu]
+    print(f"Cell {aclu}: long={long_idx:.3f}, short={short_idx:.3f}")
+```
+
+## Serialization
+
+### Saving to Pickle
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.Stages.Loading import saveData
+
+# Save individual result
+saveData('my_result.pkl', result)
+
+# Save all results (via pipeline)
+curr_pipeline.save_pipeline()
+```
+
+### Saving to HDF5
+
+```python
+# Export to HDF5 (via pipeline)
+h5_path, error = curr_pipeline.export_pipeline_to_h5(
+    override_filename='results.h5'
+)
+```
+
+## Complete Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from datetime import datetime
+import pandas as pd
+
+# Load pipeline with computed results
+curr_pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba']
+)
+
+# Iterate through all filter results
+for filter_name, result in curr_pipeline.computation_results.items():
+    print(f"\n{'='*60}")
+    print(f"Filter: {filter_name}")
+    print(f"{'='*60}")
+    
+    # Show session info
+    print(f"Session: {result.sess.name}")
+    print(f"Duration: {result.sess.duration:.2f} seconds")
+    print(f"Neurons: {result.sess.n_neurons}")
+    
+    # Show configuration
+    config = result.computation_config
+    if config is not None:
+        print(f"\nConfiguration:")
+        print(f"  Speed threshold: {config.pf_params.speed_thresh}")
+        print(f"  Grid bin: {config.pf_params.grid_bin}")
+        print(f"  FR threshold: {config.pf_params.frate_thresh}")
+    
+    # Show computed data
+    print(f"\nComputed data ({len(result.computed_data)} items):")
+    for key in result.computed_data.keys():
+        print(f"  - {key}")
+    
+    # Show errors if any
+    if len(result.accumulated_errors) > 0:
+        print(f"\nErrors ({len(result.accumulated_errors)}):")
+        for fn, error in result.accumulated_errors.items():
+            print(f"  - {fn.__name__}: {error.e}")
+    else:
+        print(f"\nNo errors!")
+    
+    # Show timing
+    if len(result.computation_times) > 0:
+        latest = max(result.computation_times.values())
+        print(f"\nLatest computation: {latest}")
+        delta = datetime.now() - latest
+        print(f"Time since: {delta}")
+
+# Check global results
+print(f"\n\n{'='*60}")
+print(f"Global Computations")
+print(f"{'='*60}")
+
+global_result = curr_pipeline.global_computation_results
+print(f"\nGlobal computed data ({len(global_result.computed_data)} items):")
+for key in global_result.computed_data.keys():
+    print(f"  - {key}")
+
+if len(global_result.accumulated_errors) > 0:
+    print(f"\nGlobal errors ({len(global_result.accumulated_errors)}):")
+    for fn, error in global_result.accumulated_errors.items():
+        print(f"  - {fn.__name__}: {error.e}")
+
+# Access specific global data
+if 'long_short_fr_indicies_analysis' in global_result.computed_data:
+    fr_analysis = global_result.computed_data['long_short_fr_indicies_analysis']
+    x_frs = fr_analysis['x_frs_index']
+    y_frs = fr_analysis['y_frs_index']
+    
+    # Create DataFrame for analysis
+    fr_df = pd.DataFrame({
+        'aclu': list(x_frs.keys()),
+        'long_fr_idx': list(x_frs.values()),
+        'short_fr_idx': list(y_frs.values())
+    })
+    
+    print(f"\nFiring Rate Indices Summary:")
+    print(fr_df.describe())
+```
+
+## Related
+
+- [NeuropyPipeline](/api/pipeline/neuropy-pipeline) - Main pipeline class
+- [ComputedPipelineStage](/api/pipeline/computation-stages) - Computation execution
+- [Computation Functions](/guides/running-pipeline) - Available computation functions

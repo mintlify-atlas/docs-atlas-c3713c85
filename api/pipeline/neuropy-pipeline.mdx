@@ -1,0 +1,475 @@
+---
+title: 'NeuropyPipeline'
+description: 'Main pipeline class for orchestrating place cell analysis workflows'
+icon: 'diagram-project'
+---
+
+## Overview
+
+The `NeuropyPipeline` class is the central component for managing place cell analysis workflows. It orchestrates data loading, filtering, computation, and visualization stages.
+
+## Class Definition
+
+```python
+class NeuropyPipeline(
+    PipelineWithInputStage,
+    PipelineWithLoadableStage,
+    FilteredPipelineMixin,
+    PipelineWithComputedPipelineStageMixin,
+    PipelineWithDisplayPipelineStageMixin,
+    PipelineWithDisplaySavingMixin,
+    HDF_SerializationMixin
+)
+```
+
+Location: `pyphoplacecellanalysis/General/Pipeline/NeuropyPipeline.py:297`
+
+## Initialization
+
+### `__init__`
+
+Create a new pipeline instance.
+
+<ParamField path="name" type="str" default="pipeline">
+  Name identifier for the pipeline
+</ParamField>
+
+<ParamField path="session_data_type" type="str" default="kdiba">
+  Type of session data (e.g., 'kdiba', 'bapun')
+</ParamField>
+
+<ParamField path="basedir" type="Path" optional>
+  Base directory containing session data
+</ParamField>
+
+<ParamField path="outputs_specifier" type="OutputsSpecifier" optional>
+  Specifies output file locations
+</ParamField>
+
+<ParamField path="load_function" type="Callable" optional>
+  Custom function for loading session data
+</ParamField>
+
+<ParamField path="post_load_functions" type="List[Callable]" default="[]">
+  Functions to execute after loading data
+</ParamField>
+
+<ResponseField name="pipeline" type="NeuropyPipeline">
+  Initialized pipeline instance
+</ResponseField>
+
+### Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from pathlib import Path
+
+pipeline = NeuropyPipeline(
+    name='my_analysis',
+    session_data_type='kdiba',
+    basedir=Path('/data/sessions')
+)
+```
+
+## Class Methods
+
+### `init_from_known_data_session_type`
+
+Initialize pipeline from a known data session type with default settings.
+
+<ParamField path="type_name" type="str" required>
+  Name of the known data session type (e.g., 'kdiba', 'bapun')
+</ParamField>
+
+<ParamField path="known_type_properties" type="KnownDataSessionTypeProperties" required>
+  Properties object containing default settings for the session type
+</ParamField>
+
+<ParamField path="override_basepath" type="Path" optional>
+  Override the default base path from known_type_properties
+</ParamField>
+
+<ParamField path="outputs_specifier" type="OutputsSpecifier" optional>
+  Custom output file specification
+</ParamField>
+
+<ParamField path="override_post_load_functions" type="List[Callable]" optional>
+  Override default post-load functions
+</ParamField>
+
+<ParamField path="override_parameters_flat_keypaths_dict" type="Dict" optional>
+  Dictionary of parameter overrides using flat keypaths
+</ParamField>
+
+<ResponseField name="pipeline" type="NeuropyPipeline">
+  Initialized pipeline instance with default settings applied
+</ResponseField>
+
+### Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from neuropy.core.session.KnownDataSessionTypeProperties import KnownDataSessionTypeProperties
+
+# Get known session type properties
+known_data_session_type_dict = KnownDataSessionTypeProperties.get_registry()
+
+# Initialize from known type
+curr_pipeline = NeuropyPipeline.init_from_known_data_session_type(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba']
+)
+```
+
+### `try_init_from_saved_pickle_or_reload_if_needed`
+
+Attempt to load a previously saved pipeline from pickle, or create and save a new one if not found.
+
+<ParamField path="type_name" type="str" required>
+  Name of the session type
+</ParamField>
+
+<ParamField path="known_type_properties" type="KnownDataSessionTypeProperties" required>
+  Properties for the session type
+</ParamField>
+
+<ParamField path="override_basepath" type="Path" optional>
+  Override base path for data
+</ParamField>
+
+<ParamField path="force_reload" type="bool" default="False">
+  If True, skip loading from pickle and rebuild from scratch
+</ParamField>
+
+<ParamField path="active_pickle_filename" type="str" default="loadedSessPickle.pkl">
+  Filename for the pickle file
+</ParamField>
+
+<ParamField path="skip_save_on_initial_load" type="bool" default="True">
+  If True, don't save the pipeline after initial load
+</ParamField>
+
+<ParamField path="progress_print" type="bool" default="True">
+  Print progress messages
+</ParamField>
+
+<ParamField path="debug_print" type="bool" default="False">
+  Print debug messages
+</ParamField>
+
+<ResponseField name="pipeline" type="NeuropyPipeline">
+  Loaded or newly created pipeline instance
+</ResponseField>
+
+### Example
+
+```python
+# Try loading from pickle or create new
+curr_pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba'],
+    force_reload=False,  # Use cached pickle if available
+    active_pickle_filename='loadedSessPickle.pkl'
+)
+```
+
+## Instance Methods
+
+### `filter_sessions`
+
+Filter sessions by applying filter configurations.
+
+<ParamField path="active_session_filter_configurations" type="Dict" required>
+  Dictionary of filter configurations mapping filter names to filter parameters
+</ParamField>
+
+<ParamField path="changed_filters_ignore_list" type="List[str]" optional>
+  List of filter names to ignore if they changed
+</ParamField>
+
+<ParamField path="debug_print" type="bool" default="False">
+  Print debug information
+</ParamField>
+
+### Example
+
+```python
+from neuropy.utils.dynamic_container import DynamicContainer
+
+# Define filter configurations
+active_session_filter_configurations = {
+    'maze1': DynamicContainer({'epoch_name': 'maze1'}),
+    'maze2': DynamicContainer({'epoch_name': 'maze2'})
+}
+
+# Apply filters
+curr_pipeline.filter_sessions(active_session_filter_configurations)
+
+# Access filtered sessions
+filtered_sessions = curr_pipeline.filtered_sessions
+```
+
+### `perform_computations`
+
+Execute registered computation functions on filtered sessions.
+
+<ParamField path="active_computation_params" type="DynamicParameters" optional>
+  Computation parameters to use (if None, uses existing configs)
+</ParamField>
+
+<ParamField path="enabled_filter_names" type="List[str]" optional>
+  List of filter names to compute (if None, computes all)
+</ParamField>
+
+<ParamField path="overwrite_extant_results" type="bool" default="False">
+  If True, recompute even if results already exist
+</ParamField>
+
+<ParamField path="computation_functions_name_includelist" type="List[str]" optional>
+  Only run these specific computation functions
+</ParamField>
+
+<ParamField path="computation_functions_name_excludelist" type="List[str]" optional>
+  Exclude these computation functions from execution
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="False">
+  If True, raise exceptions; if False, accumulate errors and continue
+</ParamField>
+
+<ParamField path="debug_print" type="bool" default="False">
+  Print debug information
+</ParamField>
+
+### Example
+
+```python
+# Perform all registered computations
+curr_pipeline.perform_computations()
+
+# Perform only specific computations
+curr_pipeline.perform_computations(
+    computation_functions_name_includelist=['pf_computation', 'extended_stats'],
+    fail_on_exception=False
+)
+
+# Access computation results
+for filter_name, result in curr_pipeline.computation_results.items():
+    print(f"Filter: {filter_name}")
+    print(f"Computed data: {result.computed_data.keys()}")
+```
+
+### `perform_specific_computation`
+
+Run specific computation functions without overwriting other results.
+
+<ParamField path="computation_functions_name_includelist" type="List[str]" required>
+  Names of computation functions to execute
+</ParamField>
+
+<ParamField path="computation_kwargs_list" type="List[Dict]" optional>
+  List of kwargs dictionaries corresponding to each function
+</ParamField>
+
+<ParamField path="enabled_filter_names" type="List[str]" optional>
+  Filter names to compute on (None means all)
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="False">
+  Whether to raise exceptions or accumulate errors
+</ParamField>
+
+### Example
+
+```python
+# Run specific computation with custom parameters
+curr_pipeline.perform_specific_computation(
+    computation_functions_name_includelist=['pf2D_Decoder'],
+    computation_kwargs_list=[{'time_bin_size': 0.25}]
+)
+```
+
+### `save_pipeline`
+
+Save the pipeline to a pickle file.
+
+<ParamField path="saving_mode" type="PipelineSavingScheme" default="TEMP_THEN_OVERWRITE">
+  Saving strategy: SKIP_SAVING, TEMP_THEN_OVERWRITE, or OVERWRITE_IN_PLACE
+</ParamField>
+
+<ParamField path="active_pickle_filename" type="str" default="loadedSessPickle.pkl">
+  Filename for the pickle file
+</ParamField>
+
+<ParamField path="override_pickle_path" type="Path" optional>
+  Full path override for pickle file location
+</ParamField>
+
+<ResponseField name="path" type="Path">
+  Path to saved pickle file (or None if SKIP_SAVING)
+</ResponseField>
+
+### Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import PipelineSavingScheme
+
+# Save pipeline with safe overwrite
+saved_path = curr_pipeline.save_pipeline(
+    saving_mode=PipelineSavingScheme.TEMP_THEN_OVERWRITE,
+    active_pickle_filename='my_analysis.pkl'
+)
+print(f"Pipeline saved to: {saved_path}")
+```
+
+### `export_pipeline_to_h5`
+
+Export pipeline data to HDF5 format.
+
+<ParamField path="override_path" type="Path" optional>
+  Override output directory or full file path
+</ParamField>
+
+<ParamField path="override_filename" type="str" optional>
+  Override output filename
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="True">
+  Whether to raise exceptions during export
+</ParamField>
+
+<ResponseField name="path" type="Path">
+  Path to exported HDF5 file
+</ResponseField>
+
+<ResponseField name="error" type="CapturedException" optional>
+  Captured exception if export failed (None on success)
+</ResponseField>
+
+### Example
+
+```python
+# Export to HDF5
+output_path, error = curr_pipeline.export_pipeline_to_h5(
+    override_filename='pipeline_results.h5'
+)
+
+if error is None:
+    print(f"Export successful: {output_path}")
+else:
+    print(f"Export failed: {error}")
+```
+
+## Properties
+
+### `sess`
+
+<ResponseField name="sess" type="DataSession">
+  The active data session
+</ResponseField>
+
+### `filtered_sessions`
+
+<ResponseField name="filtered_sessions" type="DynamicParameters">
+  Dictionary of filtered sessions by filter name
+</ResponseField>
+
+### `computation_results`
+
+<ResponseField name="computation_results" type="DynamicParameters">
+  Dictionary of ComputationResult objects by filter name
+</ResponseField>
+
+### `global_computation_results`
+
+<ResponseField name="global_computation_results" type="ComputationResult">
+  Results from global (cross-filter) computations
+</ResponseField>
+
+### `last_completed_stage`
+
+<ResponseField name="last_completed_stage" type="PipelineStage">
+  The most recently completed pipeline stage
+</ResponseField>
+
+### `is_filtered`
+
+<ResponseField name="is_filtered" type="bool">
+  True if filtering stage has been completed
+</ResponseField>
+
+### `is_computed`
+
+<ResponseField name="is_computed" type="bool">
+  True if computation stage has been completed
+</ResponseField>
+
+### `pickle_path`
+
+<ResponseField name="pickle_path" type="Path">
+  Path to the pickle file this pipeline was loaded from (None if not loaded from pickle)
+</ResponseField>
+
+## Complete Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import (
+    NeuropyPipeline, 
+    PipelineSavingScheme
+)
+from neuropy.core.session.KnownDataSessionTypeProperties import KnownDataSessionTypeProperties
+from pathlib import Path
+
+# Get known session types
+known_data_session_type_dict = KnownDataSessionTypeProperties.get_registry()
+
+# Initialize pipeline (try loading from pickle first)
+curr_pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba'],
+    override_basepath=Path('/data/kdiba/gor01/one/2006-6-08_14-26-15'),
+    force_reload=False
+)
+
+# Filter sessions
+active_session_filter_configurations = {
+    'maze1': DynamicContainer({'epoch_name': 'maze1'}),
+    'maze2': DynamicContainer({'epoch_name': 'maze2'}),
+    'maze': DynamicContainer({'epoch_name': 'maze'})
+}
+curr_pipeline.filter_sessions(active_session_filter_configurations)
+
+# Perform computations
+curr_pipeline.perform_computations(
+    overwrite_extant_results=False,
+    fail_on_exception=False
+)
+
+# Access results
+for filter_name in ['maze1', 'maze2', 'maze']:
+    result = curr_pipeline.computation_results[filter_name]
+    print(f"\n{filter_name} results:")
+    print(f"  Computed: {list(result.computed_data.keys())}")
+    print(f"  Errors: {len(result.accumulated_errors)}")
+
+# Access global results
+global_result = curr_pipeline.global_computation_results
+print(f"\nGlobal computations: {list(global_result.computed_data.keys())}")
+
+# Save pipeline
+saved_path = curr_pipeline.save_pipeline(
+    saving_mode=PipelineSavingScheme.TEMP_THEN_OVERWRITE
+)
+print(f"\nPipeline saved to: {saved_path}")
+
+# Export to HDF5
+h5_path, error = curr_pipeline.export_pipeline_to_h5()
+if error is None:
+    print(f"HDF5 export successful: {h5_path}")
+```
+
+## Related
+
+- [ComputedPipelineStage](/api/pipeline/computation-stages) - Computation stage management
+- [ComputationResult](/api/pipeline/computation-results) - Result storage and access
+- [Pipeline Guide](/concepts/pipeline) - Detailed pipeline usage guide

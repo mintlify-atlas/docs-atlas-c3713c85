@@ -1,0 +1,98 @@
+---
+title: 'API Overview'
+description: 'Core API components of pyPhoPlaceCellAnalysis'
+icon: 'code'
+---
+
+## Overview
+
+The pyPhoPlaceCellAnalysis API is organized around a pipeline-based architecture for analyzing place cell data. The main components are:
+
+- **NeuropyPipeline**: The main pipeline class that orchestrates data loading, filtering, computation, and display
+- **ComputedPipelineStage**: Manages computation stages and registered computation functions
+- **ComputationResult**: Stores computation results, configurations, and error tracking
+
+## Pipeline Architecture
+
+The pipeline follows a staged processing model:
+
+1. **Input/Loading Stage** - Load raw data from disk
+2. **Filtering Stage** - Filter sessions by epochs and criteria  
+3. **Computation Stage** - Execute registered computations on filtered data
+4. **Display Stage** - Generate visualizations and outputs
+
+## Key Concepts
+
+### Pipeline Stages
+
+The pipeline progresses through stages defined in `PipelineStage`:
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+
+# Initialize pipeline from known data type
+curr_pipeline = NeuropyPipeline.init_from_known_data_session_type(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba']
+)
+```
+
+### Computation Results
+
+All computation results are stored in `ComputationResult` objects that track:
+
+- Input session data
+- Computation configuration/parameters
+- Computed output data
+- Accumulated errors from failed computations
+- Computation completion times
+
+### Global vs. Filter-Specific Computations
+
+The API distinguishes between:
+
+- **Filter-specific computations**: Operate on individual filtered sessions (e.g., place field computation)
+- **Global computations**: Operate across multiple filters/sessions (e.g., long/short track comparisons)
+
+## Quick Start Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from neuropy.core.session.KnownDataSessionTypeProperties import KnownDataSessionTypeProperties
+
+# Initialize pipeline
+curr_pipeline = NeuropyPipeline.init_from_known_data_session_type(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba']
+)
+
+# Filter sessions
+curr_pipeline.filter_sessions(active_session_filter_configurations)
+
+# Perform computations
+curr_pipeline.perform_computations()
+
+# Access results
+results = curr_pipeline.computation_results
+global_results = curr_pipeline.global_computation_results
+```
+
+## Core Components
+
+<CardGroup cols={2}>
+  <Card title="NeuropyPipeline" icon="diagram-project" href="/api/pipeline/neuropy-pipeline">
+    Main pipeline class for orchestrating analysis workflows
+  </Card>
+  <Card title="Computation Stages" icon="gear" href="/api/pipeline/computation-stages">
+    Manage and execute computation functions
+  </Card>
+  <Card title="Computation Results" icon="database" href="/api/pipeline/computation-results">
+    Store and access computation outputs
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- See the [Quickstart Guide](/quickstart) for detailed usage examples
+- Explore [Running the Pipeline](/guides/running-pipeline) for available analyses
+- Check [Pipeline Concepts](/concepts/pipeline) for pipeline architecture details

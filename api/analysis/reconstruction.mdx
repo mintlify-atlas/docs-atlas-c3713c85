@@ -1,0 +1,392 @@
+---
+title: 'Reconstruction Results'
+description: 'Classes for storing and manipulating decoded position results'
+---
+
+## Overview
+
+The reconstruction module provides container classes for decoded position results, including `DecodedFilterEpochsResult` for multi-epoch decoding and `SingleEpochDecodedResult` for individual epochs.
+
+## DecodedFilterEpochsResult
+
+Container for decoded results from multiple non-contiguous time epochs.
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import DecodedFilterEpochsResult
+
+# Returned by decoder.decode_specific_epochs()
+result = decoder.decode_specific_epochs(
+    spikes_df=spikes_df,
+    filter_epochs=epochs,
+    decoding_time_bin_size=0.025
+)
+```
+
+### Properties
+
+<ResponseField name="decoding_time_bin_size" type="float">
+  Time bin size used for decoding (seconds)
+</ResponseField>
+
+<ResponseField name="filter_epochs" type="pd.DataFrame">
+  DataFrame of decoded epochs with 'start', 'stop', 'duration' columns
+</ResponseField>
+
+<ResponseField name="num_filter_epochs" type="int">
+  Number of epochs that were decoded
+</ResponseField>
+
+<ResponseField name="p_x_given_n_list" type="list[np.ndarray]">
+  List of posterior probability arrays, one per epoch. Each array has shape:
+  - 1D: `(n_xbins, n_epoch_tbins)`
+  - 2D: `(n_xbins, n_ybins, n_epoch_tbins)`
+</ResponseField>
+
+<ResponseField name="most_likely_positions_list" type="list[np.ndarray]">
+  Most likely positions for each time bin in each epoch
+  - 1D: `(n_epoch_tbins,)` 
+  - 2D: `(n_epoch_tbins, 2)`
+</ResponseField>
+
+<ResponseField name="most_likely_position_indicies_list" type="list[np.ndarray]">
+  Bin indices of most likely positions
+  - 1D: `(n_epoch_tbins,)`
+  - 2D: `(2, n_epoch_tbins)`
+</ResponseField>
+
+<ResponseField name="marginal_x_list" type="list[DynamicContainer]">
+  X-marginal posteriors (for 2D decoders)
+</ResponseField>
+
+<ResponseField name="marginal_y_list" type="list[DynamicContainer]">
+  Y-marginal posteriors (for 2D decoders)
+</ResponseField>
+
+<ResponseField name="time_bin_containers" type="list[BinningContainer]">
+  Time bin information for each epoch (centers, edges, etc.)
+</ResponseField>
+
+<ResponseField name="nbins" type="np.ndarray">
+  Number of time bins in each epoch, shape `(n_epochs,)`
+</ResponseField>
+
+### Methods
+
+#### get_result_for_epoch
+
+Extract results for a single epoch by index.
+
+```python
+single_result = result.get_result_for_epoch(epoch_idx=0)
+```
+
+<ParamField path="epoch_idx" type="int" required>
+  Index of epoch to extract (0-based)
+</ParamField>
+
+<ResponseField name="single_result" type="SingleEpochDecodedResult">
+  Container with decoded results for the specified epoch
+</ResponseField>
+
+#### flatten
+
+Flatten results across all epochs into single arrays.
+
+```python
+n_timebins, flat_time_bins, flat_posterior = result.flatten()
+```
+
+<ResponseField name="n_timebins" type="int">
+  Total number of time bins across all epochs
+</ResponseField>
+
+<ResponseField name="flat_time_bins" type="np.ndarray">
+  Concatenated time bin centers, shape `(n_total_tbins,)`
+</ResponseField>
+
+<ResponseField name="flat_posterior" type="np.ndarray">
+  Concatenated posteriors, shape:
+  - 1D: `(n_xbins, n_total_tbins)`
+  - 2D: `(n_xbins, n_ybins, n_total_tbins)`
+</ResponseField>
+
+#### filtered_by_epochs
+
+Create a subset containing only specified epochs.
+
+```python
+subset = result.filtered_by_epochs(
+    included_epoch_indicies=[0, 2, 5, 10]
+)
+```
+
+<ParamField path="included_epoch_indicies" type="list | np.ndarray" required>
+  Indices of epochs to include in subset
+</ParamField>
+
+<ResponseField name="subset" type="DecodedFilterEpochsResult">
+  New result object containing only the specified epochs
+</ResponseField>
+
+#### compute_radon_transforms
+
+Compute line fits using Radon transform to estimate replay velocity.
+
+```python
+radon_df, extra = result.compute_radon_transforms(
+    pos_bin_size=2.0,
+    xbin_centers=decoder.xbin_centers,
+    nlines=8192,
+    margin=8
+)
+```
+
+<ParamField path="pos_bin_size" type="float" required>
+  Position bin size in cm
+</ParamField>
+
+<ParamField path="xbin_centers" type="np.ndarray" required>
+  Position bin centers
+</ParamField>
+
+<ParamField path="nlines" type="int" default="8192">
+  Number of candidate lines to test
+</ParamField>
+
+<ParamField path="margin" type="float" default="8">
+  Margin around detected line in cm
+</ParamField>
+
+<ResponseField name="radon_df" type="pd.DataFrame">
+  DataFrame with columns: ['score', 'velocity', 'intercept', 'speed']
+  One row per epoch
+</ResponseField>
+
+## SingleEpochDecodedResult
+
+Container for results from a single decoded epoch.
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import SingleEpochDecodedResult
+
+single_result = result.get_result_for_epoch(0)
+```
+
+### Properties
+
+<ResponseField name="p_x_given_n" type="np.ndarray">
+  Posterior probability array:
+  - 1D: `(n_xbins, n_tbins)`
+  - 2D: `(n_xbins, n_ybins, n_tbins)`
+</ResponseField>
+
+<ResponseField name="most_likely_positions" type="np.ndarray">
+  Most likely positions for each time bin
+</ResponseField>
+
+<ResponseField name="time_bin_container" type="BinningContainer">
+  Time bin information (centers, edges, step size)
+</ResponseField>
+
+<ResponseField name="nbins" type="int">
+  Number of time bins in this epoch
+</ResponseField>
+
+<ResponseField name="epoch_info_tuple" type="namedtuple">
+  Metadata about the epoch (start, stop, label, duration, etc.)
+</ResponseField>
+
+### Methods
+
+#### save_posterior_as_image
+
+Save posterior probability as an image file.
+
+```python
+image, path = single_result.save_posterior_as_image(
+    parent_array_as_image_output_folder='output/posteriors',
+    desired_height=400,
+    export_kind=HeatmapExportKind.COLORMAPPED,
+    colormap='viridis'
+)
+```
+
+<ParamField path="parent_array_as_image_output_folder" type="str | Path" required>
+  Output directory for saved image
+</ParamField>
+
+<ParamField path="desired_height" type="int">
+  Target height of output image in pixels
+</ParamField>
+
+<ParamField path="export_kind" type="HeatmapExportKind">
+  Export format: COLORMAPPED, RAW_RGBA, or GREYSCALE
+</ParamField>
+
+<ParamField path="colormap" type="str" default="'viridis'">
+  Matplotlib colormap name
+</ParamField>
+
+<ResponseField name="image" type="PIL.Image">
+  Generated image object
+</ResponseField>
+
+<ResponseField name="path" type="Path">
+  Path where image was saved
+</ResponseField>
+
+## ZhangReconstructionImplementation
+
+Static methods implementing the Zhang et al. Bayesian decoding algorithm.
+
+### Mathematical Foundation
+
+The decoder computes the posterior probability of position given spike counts:
+
+$$
+P(x|n) \propto P(x) \prod_{i=1}^{N} \frac{(\tau f_i(x))^{n_i}}{n_i!} e^{-\tau f_i(x)}
+$$
+
+Where:
+- $x$ is position
+- $n = (n_1, ..., n_N)$ are spike counts for N neurons
+- $\tau$ is the time bin size
+- $f_i(x)$ is the tuning curve (firing rate map) for neuron $i$
+- $P(x)$ is the prior (typically uniform)
+
+### Methods
+
+#### neuropy_bayesian_prob
+
+Core Bayesian decoding computation.
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import ZhangReconstructionImplementation
+
+posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+    tau=0.025,
+    P_x=occupancy.flatten(),
+    F=tuning_curves_flat,
+    n=spike_counts,
+    use_flat_computation_mode=True
+)
+```
+
+<ParamField path="tau" type="float" required>
+  Time bin size in seconds
+</ParamField>
+
+<ParamField path="P_x" type="np.ndarray" required>
+  Prior probability of position, shape `(n_flat_pos_bins, 1)`
+</ParamField>
+
+<ParamField path="F" type="np.ndarray" required>
+  Flattened tuning curves, shape `(n_flat_pos_bins, n_neurons)`
+</ParamField>
+
+<ParamField path="n" type="np.ndarray" required>
+  Spike counts, shape `(n_neurons, n_tbins)`
+</ParamField>
+
+<ParamField path="use_flat_computation_mode" type="bool" default="True">
+  If True, use memory-efficient accumulating computation
+</ParamField>
+
+<ResponseField name="posterior" type="np.ndarray">
+  Posterior probability $P(x|n)$, shape `(n_flat_pos_bins, n_tbins)`
+</ResponseField>
+
+## Example Usage
+
+### Working with Multi-Epoch Results
+
+```python
+# Decode multiple replay epochs
+result = decoder.decode_specific_epochs(
+    spikes_df=spikes_df,
+    filter_epochs=replay_epochs,
+    decoding_time_bin_size=0.025
+)
+
+print(f"Decoded {result.num_filter_epochs} epochs")
+print(f"Total time bins: {np.sum(result.nbins)}")
+
+# Iterate through epochs
+for i in range(result.num_filter_epochs):
+    epoch_info = result.filter_epochs.iloc[i]
+    posterior = result.p_x_given_n_list[i]
+    positions = result.most_likely_positions_list[i]
+    
+    print(f"\nEpoch {i}:")
+    print(f"  Duration: {epoch_info['duration']:.3f}s")
+    print(f"  Time bins: {len(positions)}")
+    print(f"  Position range: [{positions.min():.1f}, {positions.max():.1f}] cm")
+```
+
+### Filtering and Subsetting
+
+```python
+# Get epochs with sufficient duration
+min_duration = 0.1  # seconds
+long_epochs = result.filter_epochs[result.filter_epochs['duration'] >= min_duration]
+long_epoch_indices = long_epochs.index.tolist()
+
+# Create subset with only long epochs
+long_result = result.filtered_by_epochs(long_epoch_indices)
+print(f"Kept {long_result.num_filter_epochs}/{result.num_filter_epochs} epochs")
+
+# Flatten for continuous analysis
+n_bins, time_centers, flat_posterior = long_result.flatten()
+print(f"Flattened to {n_bins} total time bins")
+```
+
+### Computing Replay Velocity
+
+```python
+# Compute velocity using Radon transform
+radon_df, _ = result.compute_radon_transforms(
+    pos_bin_size=2.0,
+    xbin_centers=decoder.xbin_centers,
+    nlines=8192
+)
+
+# Analyze velocity distribution
+print("\nReplay Velocity Statistics:")
+print(f"Mean speed: {radon_df['speed'].mean():.1f} cm/s")
+print(f"Mean velocity: {radon_df['velocity'].mean():.1f} cm/s")
+print(f"Forward replays: {(radon_df['velocity'] > 0).sum()}")
+print(f"Reverse replays: {(radon_df['velocity'] < 0).sum()}")
+
+# Merge with filter_epochs
+result.filter_epochs['velocity'] = radon_df['velocity'].values
+result.filter_epochs['speed'] = radon_df['speed'].values
+```
+
+### Saving Posteriors
+
+```python
+from pathlib import Path
+from pyphoplacecellanalysis.Pho2D.data_exporting import HeatmapExportKind
+
+output_dir = Path('output/decoded_posteriors')
+output_dir.mkdir(parents=True, exist_ok=True)
+
+# Save each epoch's posterior
+for i in range(result.num_filter_epochs):
+    single_result = result.get_result_for_epoch(i)
+    
+    image, path = single_result.save_posterior_as_image(
+        parent_array_as_image_output_folder=output_dir,
+        epoch_id_identifier_str=f'replay',
+        desired_height=400,
+        export_kind=HeatmapExportKind.COLORMAPPED,
+        colormap='jet'
+    )
+    print(f"Saved epoch {i} to {path}")
+```
+
+## See Also
+
+- [Bayesian Decoders](/api/analysis/decoders) - Core decoder classes
+- [Replay Scoring](/api/analysis/replay-scoring) - Heuristic replay quality metrics
+- [Position Derivatives](/api/analysis/position-derivatives) - Computing velocity from decoded positions

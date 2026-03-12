@@ -1,0 +1,322 @@
+---
+title: Installation
+description: Install pyPhoPlaceCellAnalysis and its dependencies
+---
+
+## Prerequisites
+
+Before installing pyPhoPlaceCellAnalysis, ensure you have:
+
+- **Python 3.9, 3.10, or 3.11** (Python 3.12+ is not yet supported)
+- **Git** (for installing from source)
+- **8GB+ RAM** recommended for typical analyses
+- **Linux, macOS, or Windows** (Linux/macOS recommended for full functionality)
+
+<Warning>
+  pyPhoPlaceCellAnalysis requires Python `>=3.9,<3.12`. Python 3.12+ is not currently supported due to dependency constraints.
+</Warning>
+
+## Installation Methods
+
+You can install pyPhoPlaceCellAnalysis using either conda (recommended) or uv/pip.
+
+### Option 1: Conda Installation (Recommended)
+
+Conda is the recommended installation method as it handles complex dependencies (especially PyQt and OpenGL) more reliably.
+
+<Steps>
+  <Step title="Install Conda">
+    If you don't have conda installed, download and install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or [Anaconda](https://www.anaconda.com/products/distribution).
+  </Step>
+  
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/CommanderPho/pyPhoPlaceCellAnalysis.git
+    cd pyPhoPlaceCellAnalysis
+    ```
+  </Step>
+  
+  <Step title="Create Conda Environment">
+    Create a new conda environment with all dependencies:
+    
+    ```bash
+    conda env create -f environment.yml
+    ```
+    
+    This creates an environment named `pyPhoPlaceCellAnalysis` with:
+    - Python 3.9+
+    - NumPy, SciPy, Pandas
+    - Matplotlib, Seaborn
+    - PyQtGraph, QtModern
+    - PyVista, Panel
+    - JupyterLab
+    - Development tools (pytest, nbstripout)
+  </Step>
+  
+  <Step title="Activate the Environment">
+    ```bash
+    conda activate pyPhoPlaceCellAnalysis
+    ```
+  </Step>
+  
+  <Step title="Verify Installation">
+    Test that the installation works:
+    
+    ```bash
+    python -c "import pyphoplacecellanalysis; print(pyphoplacecellanalysis.__version__)"
+    ```
+    
+    You should see the version number (e.g., `0.3.0`).
+  </Step>
+</Steps>
+
+<Note>
+  The conda environment installs pyPhoPlaceCellAnalysis in **editable mode** (`-e .`), meaning changes to the source code take effect immediately without reinstalling.
+</Note>
+
+### Option 2: UV/Pip Installation
+
+For users preferring modern Python package managers, you can use [uv](https://github.com/astral-sh/uv) or pip:
+
+<Tabs>
+  <Tab title="UV (Recommended)">
+    ```bash
+    # Install uv if you haven't already
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    
+    # Clone the repository
+    git clone https://github.com/CommanderPho/pyPhoPlaceCellAnalysis.git
+    cd pyPhoPlaceCellAnalysis
+    
+    # Create a virtual environment and install with all dependency groups
+    uv sync
+    
+    # Activate the virtual environment
+    source .venv/bin/activate  # Linux/macOS
+    # or
+    .venv\\Scripts\\activate     # Windows
+    ```
+  </Tab>
+  
+  <Tab title="Pip">
+    ```bash
+    # Create a virtual environment
+    python -m venv venv
+    source venv/bin/activate  # Linux/macOS
+    # or
+    venv\\Scripts\\activate     # Windows
+    
+    # Clone and install
+    git clone https://github.com/CommanderPho/pyPhoPlaceCellAnalysis.git
+    cd pyPhoPlaceCellAnalysis
+    pip install -e .
+    ```
+    
+    <Warning>
+      Some dependencies (especially PyQt5 and OpenGL-related packages) may require additional system libraries on Linux. Conda handles these automatically.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Key Dependencies
+
+The following core dependencies are automatically installed:
+
+### Analysis & Computation
+- **neuropy** (>=0.2.0): Core neurophysiology data structures
+- **pyphocorehelpers**: Helper utilities and mixins
+- **scipy**: Scientific computing
+- **pandas** (1.5.3): Data manipulation
+- **scikit-learn**: Machine learning utilities
+- **elephant**: Electrophysiology analysis
+
+### Visualization
+- **matplotlib**: Static plotting
+- **napari[pyqt5]**: Multi-dimensional image viewer
+- **pyqtgraph**: Fast interactive plotting
+- **panel**: Dashboards and apps
+- **pyvista**: 3D visualization
+- **opencv-contrib-python**: Computer vision utilities
+
+### Data Management
+- **tables** (PyTables): HDF5 file I/O
+- **hdf5plugin**: HDF5 compression filters
+- **sqlalchemy**: Database abstraction
+- **dill**: Enhanced pickling
+
+### GUI Framework
+- **PyQt5** (5.15.7): Qt bindings for Python
+- **magicgui**: Magic GUI generation
+- **qtawesome**: Icon fonts for Qt
+
+## Dependency Groups
+
+The project defines several dependency groups you can install selectively:
+
+```toml
+[dependency-groups]
+dev = ["pytest", "ipython", "viztracer", "snakeviz", "dvc[gdrive]"]
+gui = ["pyqt5", "pyqt-custom-titlebar-window", "mpl-multitab"]
+remote = ["neuropy"]
+testing = ["mplcursors"]
+```
+
+With uv, all groups are installed by default. With pip, install specific groups:
+
+```bash
+pip install -e ".[dev,gui,testing]"
+```
+
+## Optional: Development Tools
+
+If you plan to contribute or modify the code, install additional development tools:
+
+<Steps>
+  <Step title="Install Pre-commit Hooks">
+    ```bash
+    pre-commit install
+    ```
+    
+    This sets up automatic code formatting and linting checks before each commit.
+  </Step>
+  
+  <Step title="Install Nbstripout">
+    For notebook development, remove output cells from committed notebooks:
+    
+    ```bash
+    nbstripout --install --attributes notebooks/.gitattributes
+    ```
+  </Step>
+</Steps>
+
+## Verification Steps
+
+After installation, verify everything is working correctly:
+
+<CodeGroup>
+```python Test Import
+import pyphoplacecellanalysis
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import BayesianPlacemapPositionDecoder
+
+print(f"pyPhoPlaceCellAnalysis version: {pyphoplacecellanalysis.__version__}")
+print("✓ All imports successful!")
+```
+
+```python Test NeuroPy
+import neuropy
+from neuropy.core import Session
+
+print(f"NeuroPy available: {neuropy.__version__}")
+print("✓ NeuroPy dependency working!")
+```
+
+```python Test Visualization
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Test matplotlib
+plt.plot([1, 2, 3], [1, 4, 9])
+print("✓ Matplotlib working!")
+
+# Test PyQtGraph (may open a window)
+import pyqtgraph as pg
+print("✓ PyQtGraph available!")
+```
+</CodeGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: No module named 'PyQt5'">
+    PyQt5 installation can be tricky. Try:
+    
+    ```bash
+    # With conda (recommended)
+    conda install -c conda-forge pyqt=5.15.7
+    
+    # Or with pip
+    pip install PyQt5==5.15.7
+    ```
+    
+    On Linux, you may need system packages:
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get install python3-pyqt5 libqt5gui5
+    
+    # Fedora
+    sudo dnf install python3-qt5
+    ```
+  </Accordion>
+  
+  <Accordion title="OpenGL errors when running visualizations">
+    Install OpenGL acceleration libraries:
+    
+    ```bash
+    pip install PyOpenGL PyOpenGL-accelerate
+    ```
+    
+    On Linux:
+    ```bash
+    sudo apt-get install libglu1-mesa-dev freeglut3-dev mesa-common-dev
+    ```
+  </Accordion>
+  
+  <Accordion title="HDF5 plugin errors">
+    If you see errors about missing HDF5 filters:
+    
+    ```bash
+    pip install hdf5plugin
+    ```
+    
+    Or with conda:
+    ```bash
+    conda install -c conda-forge hdf5plugin
+    ```
+  </Accordion>
+  
+  <Accordion title="Python version compatibility">
+    Verify your Python version is compatible:
+    
+    ```bash
+    python --version
+    ```
+    
+    Must be between 3.9 and 3.11. If not, create a new environment:
+    
+    ```bash
+    conda create -n pypho python=3.10
+    conda activate pypho
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Updating pyPhoPlaceCellAnalysis
+
+To update to the latest version:
+
+<CodeGroup>
+```bash Conda
+cd pyPhoPlaceCellAnalysis
+git pull origin main
+conda env update -f environment.yml --prune
+```
+
+```bash UV
+cd pyPhoPlaceCellAnalysis
+git pull origin main
+uv sync
+```
+
+```bash Pip
+cd pyPhoPlaceCellAnalysis
+git pull origin main
+pip install -e . --upgrade
+```
+</CodeGroup>
+
+## Next Steps
+
+<Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+  Now that you have pyPhoPlaceCellAnalysis installed, learn how to run your first analysis!
+</Card>

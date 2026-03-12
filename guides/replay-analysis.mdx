@@ -1,0 +1,390 @@
+---
+title: 'Replay Analysis'
+description: 'Identify, score, and analyze hippocampal replay events using heuristic methods'
+icon: 'repeat'
+---
+
+## Overview
+
+Replay analysis identifies periods when the hippocampus reactivates previously encoded sequences, typically during rest or sleep. The framework provides heuristic scoring methods to evaluate replay quality based on decoded trajectory properties.
+
+## Replay Detection Workflow
+
+<Steps>
+  <Step title="Identify Candidate Events">
+    Detect potential replay periods (e.g., ripples, high-activity periods):
+
+    ```python
+    import pandas as pd
+    from neuropy.core.epoch import Epoch
+
+    # Load ripple events (example)
+    ripple_epochs_df = pd.DataFrame({
+        'start': [10.5, 25.3, 42.1, 58.7],
+        'stop': [10.8, 25.7, 42.5, 59.1],
+        'label': [0, 1, 2, 3]
+    })
+
+    ripple_epochs = Epoch(ripple_epochs_df)
+    print(f'Detected {len(ripple_epochs)} candidate replay events')
+    ```
+  </Step>
+
+  <Step title="Decode Each Event">
+    Decode position for each candidate event:
+
+    ```python
+    from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import ZhangReconstructionImplementation
+
+    # Decode all ripple events
+    decoded_epochs = []
+
+    for epoch_idx in range(len(ripple_epochs)):
+        start, stop = ripple_epochs.starts[epoch_idx], ripple_epochs.stops[epoch_idx]
+        
+        # Get spikes in this epoch
+        epoch_spikes = spikes_df[
+            (spikes_df['t_rel_seconds'] >= start) & 
+            (spikes_df['t_rel_seconds'] <= stop)
+        ].copy()
+        
+        # Skip if too few spikes
+        if len(epoch_spikes) < 10:
+            continue
+            
+        # Decode
+        spike_counts, time_edges, binning_info = \
+            ZhangReconstructionImplementation.time_bin_spike_counts_N_i(
+                epoch_spikes, time_bin_size=0.02
+            )
+        
+        posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+            tau=0.02, P_x=P_x, F=F, n=spike_counts
+        )
+        
+        most_likely_positions = pf1D.ratemap.xbin_centers[
+            np.argmax(posterior, axis=0)
+        ]
+        
+        decoded_epochs.append({
+            'epoch_idx': epoch_idx,
+            'start': start,
+            'stop': stop,
+            'posterior': posterior,
+            'positions': most_likely_positions,
+            'time_bins': binning_info.bin_centers
+        })
+    
+    print(f'Successfully decoded {len(decoded_epochs)} events')
+    ```
+  </Step>
+
+  <Step title="Score Replay Quality">
+    Apply heuristic metrics to evaluate replay quality:
+
+    ```python
+    from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import (
+        SubsequencesPartitioningResult,
+        HeuristicScoresTuple
+    )
+
+    # Score each decoded event
+    replay_scores = []
+
+    for decoded_event in decoded_epochs:
+        positions = decoded_event['positions']
+        
+        # Partition into subsequences
+        partition_result = SubsequencesPartitioningResult.init_from_positions_list(
+            a_most_likely_positions_list=positions,
+            pos_bin_edges=pf1D.ratemap.xbin_edges,
+            max_ignore_bins=2,
+            same_thresh=4.0,  # cm
+            debug_print=False
+        )
+        
+        # Get replay metrics
+        longest_sequence_length = partition_result.longest_subsequence_length
+        longest_sequence_ratio = partition_result.longest_sequence_length_ratio
+        
+        replay_scores.append({
+            'epoch_idx': decoded_event['epoch_idx'],
+            'n_time_bins': len(positions),
+            'longest_sequence_length': longest_sequence_length,
+            'longest_sequence_ratio': longest_sequence_ratio,
+            'position_range': np.ptp(positions)
+        })
+    
+    scores_df = pd.DataFrame(replay_scores)
+    print(scores_df)
+    ```
+  </Step>
+</Steps>
+
+## Heuristic Scoring Metrics
+
+### Sequence Quality Metrics
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import (
+    _compute_total_variation,
+    _compute_integral_second_derivative,
+    _compute_stddev_of_diff
+)
+
+# For a decoded trajectory
+positions = decoded_event['positions']
+
+# 1. Total variation (smoothness)
+total_variation = _compute_total_variation(positions)
+print(f'Total variation: {total_variation:.2f}')
+
+# 2. Second derivative (curvature)
+integral_second_deriv = _compute_integral_second_derivative(positions, dx=1)
+print(f'Integral 2nd derivative: {integral_second_deriv:.2f}')
+
+# 3. Standard deviation of differences (consistency)
+stddev_diff = _compute_stddev_of_diff(positions)
+print(f'Std dev of differences: {stddev_diff:.2f}')
+```
+
+### Direction and Continuity
+
+```python
+# Analyze sequence directionality
+first_order_diff = np.diff(positions)
+direction_changes = np.diff(np.sign(first_order_diff))
+n_direction_changes = np.sum(np.abs(direction_changes) > 0)
+
+print(f'Direction changes: {n_direction_changes}')
+print(f'Predominantly forward: {np.sum(first_order_diff > 0) > len(first_order_diff)/2}')
+print(f'Predominantly backward: {np.sum(first_order_diff < 0) > len(first_order_diff)/2}')
+
+# Compute direction change ratio
+direction_change_ratio = n_direction_changes / len(positions) if len(positions) > 0 else 0
+print(f'Direction change ratio: {direction_change_ratio:.3f}')
+```
+
+## Advanced Sequence Partitioning
+
+The `SubsequencesPartitioningResult` class provides sophisticated sequence analysis:
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import SubsequencesPartitioningResult
+
+# Initialize partition result
+partition_result = SubsequencesPartitioningResult.init_from_positions_list(
+    a_most_likely_positions_list=positions,
+    pos_bin_edges=pf1D.ratemap.xbin_edges,
+    max_ignore_bins=2,  # Bridge over 2-bin intrusions
+    same_thresh=4.0,  # 4cm threshold for "same" position
+    max_jump_distance_cm=None,  # No max jump limit
+    flat_time_window_centers=time_bins,
+    debug_print=False
+)
+
+# Access partition properties
+print(f'Total subsequences: {len(partition_result.merged_split_positions_arrays)}')
+print(f'Longest sequence index: {partition_result.longest_sequence_subsequence_idx}')
+print(f'Longest sequence length: {partition_result.longest_subsequence_length} bins')
+print(f'Longest sequence ratio: {partition_result.longest_sequence_length_ratio:.3f}')
+
+# Get the main sequence
+main_sequence = partition_result.longest_sequence_subsequence
+print(f'Main sequence: {main_sequence}')
+
+# Exclude intrusions
+main_sequence_no_intrusions = partition_result.longest_sequence_subsequence_excluding_intrusions
+print(f'Main sequence (no intrusions): {main_sequence_no_intrusions}')
+```
+
+### Subsequence DataFrame
+
+```python
+# Get detailed subsequence information
+subsequences_df = partition_result.subsequences_df
+print(subsequences_df[[
+    'subsequence_idx', 'is_main', 'len', 
+    'len_excluding_intrusions', 'len_excluding_repeats'
+]])
+
+# Filter for significant sequences
+significant_sequences = subsequences_df[
+    subsequences_df['len_excluding_intrusions'] >= 5
+]
+print(f'Sequences with ≥5 bins: {len(significant_sequences)}')
+```
+
+## Complete Replay Analysis Pipeline
+
+```python
+import numpy as np
+import pandas as pd
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import ZhangReconstructionImplementation
+from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import (
+    SubsequencesPartitioningResult,
+    _compute_total_variation,
+    _compute_integral_second_derivative
+)
+
+def analyze_replay_event(epoch_spikes_df, pf1D, P_x, F, time_bin_size=0.02):
+    """Complete replay analysis for a single epoch."""
+    
+    # Decode
+    spike_counts, time_edges, binning_info = \
+        ZhangReconstructionImplementation.time_bin_spike_counts_N_i(
+            epoch_spikes_df, time_bin_size=time_bin_size
+        )
+    
+    posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+        tau=time_bin_size, P_x=P_x, F=F, n=spike_counts
+    )
+    
+    positions = pf1D.ratemap.xbin_centers[np.argmax(posterior, axis=0)]
+    time_bins = binning_info.bin_centers
+    
+    # Partition sequences
+    partition_result = SubsequencesPartitioningResult.init_from_positions_list(
+        a_most_likely_positions_list=positions,
+        pos_bin_edges=pf1D.ratemap.xbin_edges,
+        max_ignore_bins=2,
+        same_thresh=4.0,
+        flat_time_window_centers=time_bins
+    )
+    
+    # Compute metrics
+    metrics = {
+        'n_time_bins': len(positions),
+        'longest_sequence_length': partition_result.longest_subsequence_length,
+        'longest_sequence_ratio': partition_result.longest_sequence_length_ratio,
+        'total_variation': _compute_total_variation(positions),
+        'integral_2nd_deriv': _compute_integral_second_derivative(positions),
+        'position_range_cm': np.ptp(positions),
+        'mean_posterior_max': np.mean(np.max(posterior, axis=0)),
+    }
+    
+    return {
+        'metrics': metrics,
+        'posterior': posterior,
+        'positions': positions,
+        'time_bins': time_bins,
+        'partition_result': partition_result
+    }
+
+# Analyze all replay events
+replay_results = []
+
+for epoch_idx in range(len(ripple_epochs)):
+    start, stop = ripple_epochs.starts[epoch_idx], ripple_epochs.stops[epoch_idx]
+    
+    epoch_spikes = spikes_df[
+        (spikes_df['t_rel_seconds'] >= start) & 
+        (spikes_df['t_rel_seconds'] <= stop)
+    ].copy()
+    
+    if len(epoch_spikes) < 10:
+        continue
+    
+    result = analyze_replay_event(epoch_spikes, pf1D, P_x, F)
+    result['metrics']['epoch_idx'] = epoch_idx
+    result['metrics']['start_time'] = start
+    result['metrics']['stop_time'] = stop
+    result['metrics']['duration'] = stop - start
+    
+    replay_results.append(result)
+
+# Create summary DataFrame
+replay_summary_df = pd.DataFrame([r['metrics'] for r in replay_results])
+print(replay_summary_df)
+```
+
+## Filtering High-Quality Replays
+
+```python
+# Define quality thresholds
+quality_thresholds = {
+    'longest_sequence_ratio': 0.4,  # At least 40% of bins in main sequence
+    'n_time_bins': 5,  # At least 5 time bins
+    'position_range_cm': 30,  # At least 30cm trajectory
+    'mean_posterior_max': 0.3,  # Average max posterior > 0.3
+}
+
+# Filter for high-quality replays
+high_quality_mask = (
+    (replay_summary_df['longest_sequence_ratio'] >= quality_thresholds['longest_sequence_ratio']) &
+    (replay_summary_df['n_time_bins'] >= quality_thresholds['n_time_bins']) &
+    (replay_summary_df['position_range_cm'] >= quality_thresholds['position_range_cm']) &
+    (replay_summary_df['mean_posterior_max'] >= quality_thresholds['mean_posterior_max'])
+)
+
+high_quality_replays = replay_summary_df[high_quality_mask]
+print(f'High-quality replays: {len(high_quality_replays)} / {len(replay_summary_df)}')
+print(high_quality_replays[['epoch_idx', 'duration', 'longest_sequence_ratio', 'position_range_cm']])
+```
+
+## Visualizing Replay Events
+
+```python
+import matplotlib.pyplot as plt
+
+# Visualize a specific replay
+replay_idx = 0
+replay = replay_results[replay_idx]
+
+fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+
+# Posterior probability
+ax = axes[0]
+im = ax.imshow(
+    replay['posterior'],
+    aspect='auto',
+    origin='lower',
+    extent=[
+        replay['time_bins'][0],
+        replay['time_bins'][-1],
+        pf1D.ratemap.xbin_centers[0],
+        pf1D.ratemap.xbin_centers[-1]
+    ],
+    cmap='hot'
+)
+ax.set_ylabel('Position (cm)')
+ax.set_title(f'Replay Event {replay_idx} - Posterior Probability')
+plt.colorbar(im, ax=ax, label='Probability')
+
+# Decoded trajectory
+ax = axes[1]
+ax.plot(replay['time_bins'], replay['positions'], 'b-', linewidth=2)
+ax.set_xlabel('Time (s)')
+ax.set_ylabel('Decoded Position (cm)')
+ax.set_title('Most Likely Trajectory')
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
+<Tip>
+**Interpretation Tips**
+- `longest_sequence_ratio > 0.5`: Strong, continuous replay
+- `total_variation`: Lower is smoother/more linear
+- `position_range_cm`: Larger indicates longer trajectory replay
+- `mean_posterior_max`: Higher indicates more confident decoding
+</Tip>
+
+<Warning>
+**Common Issues**
+- Few active neurons: Decoding may be unreliable
+- Short events: May not have enough time bins for meaningful analysis
+- Low posterior confidence: May indicate noisy or ambiguous replay
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Visualization" icon="chart-line" href="/guides/visualization">
+    Create publication-quality replay visualizations
+  </Card>
+  <Card title="Batch Processing" icon="layer-group" href="/guides/batch-processing">
+    Analyze replays across multiple sessions
+  </Card>
+</CardGroup>

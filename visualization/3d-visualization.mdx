@@ -1,0 +1,473 @@
+---
+title: 3D Visualization
+description: Interactive 3D spatial visualization with PyVista
+icon: cube
+---
+
+The Pho3D module provides powerful 3D visualization capabilities using **PyVista**, enabling interactive spatial analysis of neural activity.
+
+## Overview
+
+PyVista integration allows you to:
+- Render 3D spatial trajectories
+- Visualize spike positions in 3D space
+- Create interactive arena environments
+- Display dynamic lighting effects for spike events
+- Build custom GUI controls for 3D scenes
+
+## Getting Started
+
+### Basic 3D Setup
+
+```python
+import pyvista as pv
+import numpy as np
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import (
+    perform_plot_flat_arena,
+    build_active_spikes_plot_data_df
+)
+
+# Create plotter
+p = pv.Plotter()
+p.set_background('white')
+
+# Your visualization code here
+p.show()
+```
+
+## Arena Visualization
+
+Create the experimental arena environment as a 3D mesh.
+
+### Flat Arena with Extrusion
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import perform_plot_flat_arena
+import pyvista as pv
+
+# Create plotter
+p = pv.Plotter()
+
+# Get position data
+x = position_df['x'].values
+y = position_df['y'].values
+
+# Plot arena with 3D extrusion
+perform_plot_flat_arena(
+    p, x, y,
+    z=-0.01,
+    smoothing=True,
+    extrude_height=-5,
+    color=[0.1, 0.1, 0.1],
+    pbr=True,
+    metallic=0.8,
+    roughness=0.5
+)
+
+p.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/spikeAndPositions.py:68`
+
+<Note>
+  Set `smoothing=True` for Delaunay triangulation. Use `smoothing=False` for Z-shaped or N-shaped mazes to avoid unwanted mesh closure.
+</Note>
+
+### Custom Arena Properties
+
+```python
+# Metallic dark arena
+perform_plot_flat_arena(
+    p, x, y,
+    name='maze_bg',
+    color=[0.1, 0.1, 0.1],
+    pbr=True,          # Physically-based rendering
+    metallic=0.8,      # Metallic appearance
+    roughness=0.5,     # Surface roughness
+    diffuse=1
+)
+```
+
+## Spike Visualization
+
+Render neural spikes as 3D glyphs in spatial context.
+
+### Spike Rendering from DataFrame
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import (
+    build_active_spikes_plot_data_df,
+    spike_geom_cone
+)
+import pandas as pd
+
+# Prepare spike data
+active_flat_df = pd.DataFrame({
+    'x': spike_x_positions,
+    'y': spike_y_positions,
+    'aclu': cell_ids,
+    'R': red_values,
+    'G': green_values,
+    'B': blue_values,
+    'render_opacity': opacity_values
+})
+
+# Build spike visualization
+spike_pdata, spike_pc = build_active_spikes_plot_data_df(
+    active_flat_df,
+    spike_geom_cone,
+    enable_debug_print=False
+)
+
+# Add to plotter
+p.add_mesh(
+    spike_pc,
+    scalars='rgb',
+    rgb=True,
+    opacity='render_opacity',
+    name='spikes'
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/spikeAndPositions.py:158`
+
+### Spike Geometries
+
+Multiple geometry options for spike rendering:
+
+<Tabs>
+  <Tab title="Cone">
+    ```python
+    from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import spike_geom_cone
+    import pyvista as pv
+    
+    spike_geom = pv.Cone(
+        direction=(0.0, 0.0, -1.0),
+        height=10.0,
+        radius=0.2
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Circle">
+    ```python
+    from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import spike_geom_circle
+    import pyvista as pv
+    
+    spike_geom = pv.Circle(radius=0.4)
+    ```
+  </Tab>
+  
+  <Tab title="Box">
+    ```python
+    from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import spike_geom_box
+    import pyvista as pv
+    
+    spike_geom = pv.Box(
+        bounds=[-0.2, 0.2, -0.2, 0.2, -0.05, 0.05]
+    )
+    ```
+  </Tab>
+</Tabs>
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/spikeAndPositions.py:28`
+
+### Custom Z-Positioning
+
+```python
+# Custom z-values for spike height
+active_flat_df['z'] = spike_heights
+
+# Or use default fixed height
+active_flat_df['z_fixed'] = 1.1  # Offset above arena floor
+```
+
+## Trajectory Visualization
+
+Plot animal movement paths as 3D lines.
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.plot_data import lines_from_points
+import numpy as np
+
+# Create trajectory points
+points = np.column_stack([x_positions, y_positions, z_values])
+
+# Build polyline
+trajectory_poly = lines_from_points(points)
+
+# Add to plotter
+p.add_mesh(
+    trajectory_poly,
+    color='blue',
+    line_width=3,
+    name='trajectory'
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/PhoPositionalData/plot_data.py:74`
+
+## GUI Components
+
+Add interactive controls to your 3D visualizations.
+
+### Custom Theme
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.gui import customize_default_pyvista_theme
+import pyvista as pv
+
+# Apply custom theme
+customize_default_pyvista_theme()
+
+# Create plotter with custom settings
+p = pv.Plotter()
+# Theme is now active with:
+# - Window size: [1920, 1080]
+# - White background
+# - Custom slider styles
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/gui.py:47`
+
+### Toggle Checkboxes
+
+Add mutually exclusive checkboxes for layer visibility:
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.gui import (
+    add_placemap_toggle_mutually_exclusive_checkboxes,
+    SetVisibilityCallback
+)
+
+# Create visibility callbacks
+callbacks = [SetVisibilityCallback(actor) for actor in actors]
+
+# Add checkbox controls
+checkboxes, final_callbacks, radio_group = \
+    add_placemap_toggle_mutually_exclusive_checkboxes(
+        p,
+        callbacks,
+        colors,
+        active_element_idx=0,
+        widget_size=20,
+        require_active_selection=True
+    )
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/gui.py:298`
+
+### Standard Checkboxes
+
+For independent toggle controls:
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.gui import add_placemap_toggle_checkboxes
+
+checkboxes, callbacks = add_placemap_toggle_checkboxes(
+    p,
+    visibility_callbacks,
+    colors,
+    widget_check_states=True,  # All initially visible
+    widget_size=20,
+    widget_start_pos=12
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/gui.py:240`
+
+## Lighting Effects
+
+Create dynamic lighting for spike events.
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import (
+    build_spike_spawn_effect_light_actor
+)
+import pyvista as pv
+
+# Create light at spike location
+spike_position = [x, y, z]
+light = build_spike_spawn_effect_light_actor(
+    p,
+    spike_position,
+    spike_unit_color='white'
+)
+
+# Light properties (configured automatically):
+# - Cone angle: 40 degrees
+# - Intensity: 3
+# - Exponent: 10
+# - Positional: True
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/spikeAndPositions.py:211`
+
+<Note>
+  The light effect includes automatic z-offset positioning to illuminate the spike location from above.
+</Note>
+
+## Camera Control
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.camera_manipulation import (
+    # Import camera helper functions
+)
+
+# Set camera position
+p.camera_position = 'xy'  # Top-down view
+
+# Or custom position
+p.camera.position = (100, 100, 50)
+p.camera.focal_point = (0, 0, 0)
+p.camera.up = (0, 0, 1)
+```
+
+## Advanced Features
+
+### Point Cloud Data
+
+Create point clouds from spike positions:
+
+```python
+import pyvista as pv
+import numpy as np
+
+# Stack coordinates
+point_cloud = np.vstack((x, y, z)).T
+
+# Create PolyData
+pdata = pv.PolyData(point_cloud)
+pdata['cellID'] = cell_ids
+pdata['rgb'] = rgb_colors
+
+# Render with glyphs
+geo = pv.Sphere(radius=0.5)
+pc = pdata.glyph(scale=False, geom=geo)
+
+p.add_mesh(pc, scalars='rgb', rgb=True)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/spikeAndPositions.py:109`
+
+### Helper Text
+
+Display keyboard controls:
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.gui import print_controls_helper_text
+
+# Print controls to console
+controls = print_controls_helper_text()
+
+# Controls:
+# [f] - Focus and zoom in on the last clicked point
+# shift+click - Drag to pan the rendering scene
+# ctrl+click - Rotate the scene in 2D
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/gui.py:14`
+
+### Background Gradients
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.gui import get_gradients
+
+# Get available gradients
+gradients = get_gradients()
+
+# Apply gradient background
+start_color, end_color = gradients['Purple Paradise']
+p.set_background(start_color, top=end_color)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho3D/PyVista/gui.py:34`
+
+## Complete Example
+
+```python
+import pyvista as pv
+import pandas as pd
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import (
+    perform_plot_flat_arena,
+    build_active_spikes_plot_data_df,
+    spike_geom_cone
+)
+from pyphoplacecellanalysis.Pho3D.PyVista.gui import (
+    customize_default_pyvista_theme
+)
+
+# Apply theme
+customize_default_pyvista_theme()
+
+# Create plotter
+p = pv.Plotter()
+
+# Plot arena
+perform_plot_flat_arena(
+    p,
+    position_x,
+    position_y,
+    smoothing=True,
+    extrude_height=-5
+)
+
+# Prepare spike data
+spike_df = pd.DataFrame({
+    'x': spike_x,
+    'y': spike_y,
+    'aclu': cell_ids,
+    'R': red,
+    'G': green,
+    'B': blue,
+    'render_opacity': np.ones(len(spike_x))
+})
+
+# Add spikes
+spike_pdata, spike_pc = build_active_spikes_plot_data_df(
+    spike_df,
+    spike_geom_cone
+)
+
+p.add_mesh(
+    spike_pc,
+    scalars='rgb',
+    rgb=True,
+    name='spikes'
+)
+
+# Set camera
+p.camera_position = 'xy'
+
+# Show
+p.show()
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Performance">
+    - Use `scale=False` in glyph rendering when all glyphs are same size
+    - Pre-compute RGBA colors in dataframe
+    - Use appropriate geometry complexity for spike glyphs
+    - Enable `pbr=True` for better visual quality
+  </Accordion>
+  
+  <Accordion title="Visual Quality">
+    - Use physically-based rendering (PBR) for realistic lighting
+    - Apply anti-aliasing: `p.enable_anti_aliasing()`
+    - Choose appropriate background colors
+    - Use extrusion for better depth perception
+  </Accordion>
+  
+  <Accordion title="Interactivity">
+    - Add keyboard callbacks for custom interactions
+    - Use mutually exclusive checkboxes for layer comparison
+    - Implement time-slider for temporal navigation
+    - Display helper text for user guidance
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  The `smoothing=True` option uses Delaunay triangulation which may not work correctly for non-convex maze shapes. Disable smoothing for complex arena geometries.
+</Warning>

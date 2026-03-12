@@ -1,0 +1,490 @@
+---
+title: GUI Tools
+description: Qt-based GUI components for interactive data exploration
+icon: window-maximize
+---
+
+The GUI module provides sophisticated Qt-based graphical interfaces for interactive neuroscience data analysis and visualization.
+
+## Overview
+
+pyPhoPlaceCellAnalysis offers extensive GUI tools built on **PyQt** and **pyqtgraph**, enabling:
+
+- Interactive data exploration windows
+- Dockable widget layouts
+- Time-synchronized multi-panel displays
+- File browser dialogs
+- Custom control widgets
+- Flowchart-based computation pipelines
+
+## Core GUI Components
+
+### Binned Image Rendering Window
+
+Display neural activity as interactive binned images:
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.BinnedImageRenderingWindow import (
+    BasicBinnedImageRenderingWindow
+)
+import numpy as np
+
+# Create window
+win = BasicBinnedImageRenderingWindow(
+    matrix=tuning_curve_data,
+    xbins=xbin_edges,
+    ybins=ybin_edges,
+    name='Place Field',
+    title='Neuron 42',
+    color_map='viridis',
+    color_bar_mode=None,
+    scrollability_mode=LayoutScrollability.SCROLLABLE
+)
+
+# Add more data
+win.add_data(
+    row=1,
+    col=0,
+    matrix=another_tuning_curve,
+    xbins=xbin_edges,
+    ybins=ybin_edges,
+    title='Neuron 43'
+)
+
+win.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/GUI/PyQtPlot/BinnedImageRenderingWindow.py`
+
+### Time-Synchronized Plotters
+
+Create synchronized multi-panel displays that update together:
+
+```python
+from pyphoplacecellanalysis.Pho2D.PyQtPlots.TimeSynchronizedPlotters.TimeSynchronizedPlotterBase import (
+    TimeSynchronizedPlotterBase
+)
+
+class CustomTimeSyncPlotter(TimeSynchronizedPlotterBase):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+    def update_time_window(self, new_start_time, new_end_time):
+        """Called when time window changes"""
+        # Update all plots to show data in new time range
+        self.update_plots()
+        
+    def on_window_changed(self, window_start, window_end):
+        """Handle window change events"""
+        self.update_time_window(window_start, window_end)
+
+# Create synchronized plotter
+plotter = CustomTimeSyncPlotter(
+    curr_active_pipeline.sess,
+    data_manager=data_manager
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/PyQtPlots/TimeSynchronizedPlotters/TimeSynchronizedPlotterBase.py`
+
+## File Dialogs
+
+### Save File Dialog
+
+Prompt user to save files with custom filters:
+
+```python
+from pyphoplacecellanalysis.GUI.IPyWidgets.pipeline_ipywidgets import saveFile
+from pathlib import Path
+
+def on_save_callback(file_name):
+    print(f'Saving to: {file_name}')
+    # Perform save operation
+    data.save(file_name)
+
+# HDF5 file
+file_dialog = saveFile(
+    on_save_callback,
+    caption="Save data as HDF5",
+    startDir='/path/to/data',
+    suggestedFileName='neural_data.h5',
+    filter="H5py File (*.h5)",
+    default_suffix="h5"
+)
+
+# Pickle file
+file_dialog = saveFile(
+    on_save_callback,
+    caption="Save pickle as..",
+    suggestedFileName='results.pkl',
+    filter="Pickle File (*.pkl)",
+    default_suffix="pkl"
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/GUI/IPyWidgets/pipeline_ipywidgets.py:39`
+
+### File Browser
+
+Create interactive file browsers in Jupyter:
+
+```python
+from pyphocorehelpers.gui.Jupyter.simple_widgets import (
+    create_file_browser,
+    fullwidth_path_widget
+)
+from pathlib import Path
+
+# Create browser
+browser = create_file_browser(
+    start_dir=Path.home(),
+    file_filter='*.h5'
+)
+
+# Display path widget
+path_widget = fullwidth_path_widget(
+    Path('/path/to/file.h5'),
+    file_name_label='Data File'
+)
+```
+
+## Docking Widgets
+
+Create flexible dockable window layouts:
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.DockingWidgets.DynamicDockDisplayAreaContent import (
+    CustomDockDisplayConfig
+)
+from pyphoplacecellanalysis.GUI.PyQtPlot.Widgets.DockAreaWrapper import (
+    PhoDockAreaContainingWindow
+)
+import pyphoplacecellanalysis.External.pyqtgraph as pg
+
+# Create dockable window
+dock_window = PhoDockAreaContainingWindow(
+    title='Neural Data Explorer'
+)
+
+# Add dock widgets
+dock1 = pg.dockarea.Dock('Raster Plot', size=(500, 400))
+dock2 = pg.dockarea.Dock('Place Fields', size=(500, 400))
+
+dock_window.area.addDock(dock1, 'left')
+dock_window.area.addDock(dock2, 'right', dock1)
+
+# Add widgets to docks
+raster_widget = pg.PlotWidget()
+dock1.addWidget(raster_widget)
+
+placefield_widget = pg.GraphicsLayoutWidget()
+dock2.addWidget(placefield_widget)
+
+dock_window.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/GUI/PyQtPlot/Widgets/DockAreaWrapper.py`
+
+## Custom Widgets
+
+### Pagination Control
+
+Add page navigation to multi-page displays:
+
+```python
+from pyphoplacecellanalysis.GUI.Qt.Widgets.PaginationCtrl.PaginationControlWidget import (
+    PaginationControlWidget,
+    PaginationControlWidgetState
+)
+
+# Create pagination control
+pagination = PaginationControlWidget()
+
+# Configure
+state = PaginationControlWidgetState(
+    current_page=0,
+    total_pages=10,
+    items_per_page=20
+)
+pagination.update_state(state)
+
+# Connect callbacks
+pagination.sigPageChanged.connect(on_page_changed)
+pagination.sigItemsPerPageChanged.connect(on_items_changed)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/GUI/Qt/Widgets/PaginationCtrl/PaginationControlWidget.py`
+
+### Thin Button Bar
+
+Compact button toolbar:
+
+```python
+from pyphoplacecellanalysis.GUI.Qt.Widgets.ThinButtonBar.ThinButtonBarWidget import (
+    ThinButtonBarWidget
+)
+
+# Create button bar
+button_bar = ThinButtonBarWidget()
+
+# Add buttons
+button_bar.add_button(
+    text='Export',
+    callback=export_data,
+    icon='save'
+)
+button_bar.add_button(
+    text='Refresh',
+    callback=refresh_view,
+    icon='refresh'
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/GUI/Qt/Widgets/ThinButtonBar/ThinButtonBarWidget.py`
+
+## Matplotlib Integration
+
+### Custom Matplotlib Widget
+
+Embed matplotlib figures in Qt windows:
+
+```python
+from pyphoplacecellanalysis.Pho2D.matplotlib.CustomMatplotlibWidget import (
+    CustomMatplotlibWidget
+)
+import matplotlib.pyplot as plt
+
+# Create widget
+mpl_widget = CustomMatplotlibWidget()
+
+# Get figure and axes
+fig = mpl_widget.figure
+ax = fig.add_subplot(111)
+
+# Plot
+ax.plot([1, 2, 3], [1, 4, 9])
+ax.set_title('Custom Plot')
+
+mpl_widget.draw()
+mpl_widget.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/matplotlib/CustomMatplotlibWidget.py`
+
+### Tabbed Matplotlib Widget
+
+Multiple matplotlib figures in tabs:
+
+```python
+from pyphoplacecellanalysis.Pho2D.matplotlib.CustomMatplotlibTabbedWidget import (
+    CustomMatplotlibTabbedWidget
+)
+
+# Create tabbed widget
+tabbed_widget = CustomMatplotlibTabbedWidget()
+
+# Add tabs
+tabbed_widget.add_tab('Raster', create_raster_plot)
+tabbed_widget.add_tab('Tuning Curves', create_tuning_plot)
+tabbed_widget.add_tab('Decoder', create_decoder_plot)
+
+tabbed_widget.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/matplotlib/CustomMatplotlibTabbedWidget.py`
+
+## Plotly Integration
+
+### Plotly PyQt Widget
+
+Embed interactive Plotly figures in Qt:
+
+```python
+from pyphoplacecellanalysis.Pho2D.plotly.Extensions.PlotlyFigurePyQtWidget import (
+    PlotlyFigurePyQtWidget
+)
+import plotly.graph_objects as go
+
+# Create Plotly figure
+fig = go.Figure(data=[go.Scatter(x=[1, 2, 3], y=[1, 4, 9])])
+fig.update_layout(title='Interactive Plotly in Qt')
+
+# Embed in Qt widget
+plotly_widget = PlotlyFigurePyQtWidget(fig)
+plotly_widget.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/plotly/Extensions/PlotlyFigurePyQtWidget.py`
+
+## Flowchart Pipelines
+
+Build visual computation pipelines:
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.Flowchart.CustomNodes.BasePipeline.PipelineComputationsNode import (
+    PipelineComputationsNode
+)
+
+# Create flowchart
+flowchart = pg.flowchart.Flowchart()
+
+# Add custom nodes
+input_node = PipelineInputDataNode('Input')
+filter_node = PipelineFilteringDataNode('Filter')
+compute_node = PipelineComputationsNode('Compute')
+output_node = PipelineDisplayNode('Display')
+
+# Connect nodes
+flowchart.connectTerminals(
+    input_node['output'],
+    filter_node['input']
+)
+flowchart.connectTerminals(
+    filter_node['output'],
+    compute_node['input']
+)
+flowchart.connectTerminals(
+    compute_node['output'],
+    output_node['input']
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/GUI/PyQtPlot/Flowchart/CustomNodes/BasePipeline/PipelineComputationsNode.py`
+
+## Advanced Examples
+
+### Stacked Epoch Viewer
+
+```python
+from pyphoplacecellanalysis.Pho2D.stacked_epoch_slices import (
+    stacked_epoch_basic_setup
+)
+
+# Setup stacked epoch viewer
+params, plots_data, plots, ui = stacked_epoch_basic_setup(
+    epoch_slices,
+    epoch_labels=lap_labels,
+    name='lap_viewer',
+    plot_function_name='Lap Analysis',
+    single_plot_fixed_height=100.0,
+    debug_test_max_num_slices=50
+)
+
+# Access components
+window = ui.rootWindow
+graphics_layout = ui.graphics_layout
+window.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/stacked_epoch_slices.py:72`
+
+### Interactive Selection
+
+```python
+from pyphoplacecellanalysis.GUI.Qt.Mixins.PaginationMixins import SelectionsObject
+from neuropy.core.user_annotations import UserAnnotationsManager
+
+# Create selection manager
+selections = SelectionsObject()
+annotations = UserAnnotationsManager()
+
+# Mark items as selected
+selections.is_selected = [True, False, True, False]
+selections.selected_indices = [0, 2]
+
+# Save selections
+annotations.add_annotation(
+    'good_epochs',
+    selections.selected_indices
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/GUI/Qt/Mixins/PaginationMixins.py`
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Window Management">
+    - Use `PhoDockAreaContainingWindow` for complex layouts
+    - Keep references to windows to prevent garbage collection
+    - Call `window.show()` explicitly to display
+    - Use `app.exec_()` to start the Qt event loop
+  </Accordion>
+  
+  <Accordion title="Signal/Slot Connections">
+    - Use Qt signals for event-driven updates
+    - Disconnect signals when widgets are destroyed
+    - Use lambda functions carefully (can cause memory leaks)
+    - Keep strong references to callback objects
+  </Accordion>
+  
+  <Accordion title="Performance">
+    - Batch GUI updates to reduce redraws
+    - Use `setUpdatesEnabled(False)` during bulk changes
+    - Defer heavy computations to background threads
+    - Cache rendered content when possible
+  </Accordion>
+  
+  <Accordion title="Layout">
+    - Use docking for flexible user layouts
+    - Provide sensible default arrangements
+    - Save/restore window geometry and state
+    - Support both vertical and horizontal layouts
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Qt applications require an event loop. In Jupyter, use `%gui qt` magic command. In scripts, call `app.exec_()` to start the loop.
+</Note>
+
+## Common Patterns
+
+### Creating a Basic Qt Application
+
+```python
+import pyphoplacecellanalysis.External.pyqtgraph as pg
+from pyphoplacecellanalysis.External.pyqtgraph.Qt import QtWidgets
+
+# Create application
+app = pg.mkQApp("My Neural Analysis")
+
+# Create main window
+main_window = QtWidgets.QMainWindow()
+main_window.setWindowTitle('Neural Data Viewer')
+
+# Create central widget
+central_widget = pg.GraphicsLayoutWidget()
+main_window.setCentralWidget(central_widget)
+
+# Add plots
+plot1 = central_widget.addPlot(title='Raster')
+plot2 = central_widget.addPlot(title='Firing Rate')
+
+# Show
+main_window.show()
+app.exec_()
+```
+
+### Updating Plots Dynamically
+
+```python
+from pyphoplacecellanalysis.External.pyqtgraph.Qt import QtCore
+
+class LivePlotter:
+    def __init__(self):
+        self.plot_widget = pg.PlotWidget()
+        self.plot_item = self.plot_widget.plot()
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(100)  # Update every 100ms
+        
+    def update(self):
+        # Get new data
+        new_data = get_latest_data()
+        # Update plot
+        self.plot_item.setData(new_data)
+```
+
+<Warning>
+  Always keep references to Qt objects while they're in use. Python garbage collection may delete objects that Qt still references, causing crashes.
+</Warning>

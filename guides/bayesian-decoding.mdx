@@ -1,0 +1,358 @@
+---
+title: 'Bayesian Decoding'
+description: 'Decode spatial position from neural population activity using Bayesian methods'
+icon: 'brain'
+---
+
+## Overview
+
+Bayesian decoding estimates the animal's position from population spiking activity using the Zhang et al. reconstruction algorithm. The framework supports both 1D and 2D position decoding with customizable time bins and parameters.
+
+## Basic Decoding Workflow
+
+<Steps>
+  <Step title="Prepare Spike Data">
+    Time-bin spike counts for decoding:
+
+    ```python
+    from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import ZhangReconstructionImplementation
+    import numpy as np
+
+    # Get session spikes
+    spikes_df = sess.spikes_df.copy()
+
+    # Define time bin size
+    time_bin_size = 0.02  # 20ms bins
+
+    # Compute time-binned spike counts
+    unit_specific_binned_spike_counts, time_window_edges, time_window_edges_binning_info = \
+        ZhangReconstructionImplementation.time_bin_spike_counts_N_i(
+            spikes_df, 
+            time_bin_size=time_bin_size,
+            debug_print=False
+        )
+
+    print(f'Spike count matrix shape: {unit_specific_binned_spike_counts.shape}')
+    # Output: (n_neurons, n_time_bins)
+    ```
+  </Step>
+
+  <Step title="Build Decoder">
+    Create a decoder from placefields:
+
+    ```python
+    from neuropy.analyses.placefields import PfND
+
+    # Get computed placefields
+    pf1D = curr_active_pipeline.computation_results['maze1'].computed_data['pf1D']
+
+    # Extract necessary components
+    neuron_IDXs, neuron_IDs, f_i, F_i, F, P_x = \
+        ZhangReconstructionImplementation.build_concatenated_F(
+            pf1D, 
+            debug_print=True
+        )
+
+    print(f'F matrix shape: {F.shape}')  # (n_position_bins, n_neurons)
+    print(f'P_x shape: {P_x.shape}')  # (n_position_bins, 1)
+    print(f'Number of neurons: {len(neuron_IDs)}')
+    ```
+  </Step>
+
+  <Step title="Compute Posterior">
+    Calculate posterior probability distribution:
+
+    ```python
+    # Compute Bayesian posterior
+    tau = time_bin_size  # time window
+    n = unit_specific_binned_spike_counts  # spike counts
+
+    posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+        tau=tau,
+        P_x=P_x,
+        F=F,
+        n=n,
+        use_flat_computation_mode=True,
+        debug_print=False
+    )
+
+    print(f'Posterior shape: {posterior.shape}')
+    # Output: (n_position_bins, n_time_bins)
+
+    # Get most likely positions
+    most_likely_positions_idx = np.argmax(posterior, axis=0)
+    most_likely_positions = pf1D.ratemap.xbin_centers[most_likely_positions_idx]
+    ```
+  </Step>
+</Steps>
+
+## Using Pre-built Decoders
+
+<Tip>
+For standard analysis, use the high-level decoder interface:
+</Tip>
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import BasePositionDecoder
+
+# Create decoder from placefields
+decoder = BasePositionDecoder(
+    time_bin_size=0.02,
+    pf=pf1D,
+    setup_on_init=True,
+    post_load_on_init=True
+)
+
+# Decode position for an epoch
+epoch_start = 100.0  # seconds
+epoch_end = 200.0  # seconds
+
+# Get epoch spikes
+epoch_spikes_df = spikes_df[
+    (spikes_df['t_rel_seconds'] >= epoch_start) & 
+    (spikes_df['t_rel_seconds'] <= epoch_end)
+].copy()
+
+# Decode
+posterior, time_bins = decoder.decode_specific_epochs(
+    spikes_df=epoch_spikes_df,
+    filter_epochs=None,
+    decoding_time_bin_size=0.02
+)
+```
+
+## Decoding Specific Epochs
+
+Decode replay events or other specific time periods:
+
+```python
+from neuropy.core.epoch import Epoch
+import pandas as pd
+
+# Define epochs to decode (e.g., replay events)
+replays_df = pd.DataFrame({
+    'start': [10.5, 25.3, 42.1],
+    'stop': [10.8, 25.7, 42.5],
+    'label': ['replay_1', 'replay_2', 'replay_3']
+})
+
+replays_epochs = Epoch(replays_df)
+
+# Decode each epoch
+for epoch_idx, (start, stop, label) in enumerate(zip(
+    replays_epochs.starts, 
+    replays_epochs.stops,
+    replays_epochs.labels
+)):
+    # Get epoch spikes
+    epoch_spikes = spikes_df[
+        (spikes_df['t_rel_seconds'] >= start) & 
+        (spikes_df['t_rel_seconds'] <= stop)
+    ].copy()
+    
+    # Compute spike counts for this epoch
+    unit_specific_binned_spike_counts, time_edges, binning_info = \
+        ZhangReconstructionImplementation.time_bin_spike_counts_N_i(
+            epoch_spikes,
+            time_bin_size=0.02
+        )
+    
+    # Decode
+    epoch_posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+        tau=0.02,
+        P_x=P_x,
+        F=F,
+        n=unit_specific_binned_spike_counts
+    )
+    
+    # Extract most likely trajectory
+    decoded_positions = pf1D.ratemap.xbin_centers[
+        np.argmax(epoch_posterior, axis=0)
+    ]
+    
+    print(f'{label}: {len(decoded_positions)} time bins')
+    print(f'  Position range: [{decoded_positions.min():.1f}, {decoded_positions.max():.1f}] cm')
+```
+
+## Two-Step Decoding
+
+Incorporate movement dynamics for improved decoding:
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import Zhang_Two_Step
+
+# Build position grid
+all_positions_matrix, flat_all_positions_matrix, original_data_shape = \
+    Zhang_Two_Step.build_all_positions_matrix(
+        x_values=pf1D.ratemap.xbin_centers,
+        y_values=np.array([0]),  # 1D case
+        debug_print=False
+    )
+
+# Compute velocity-dependent uncertainty
+K = 1.0  # scaling constant
+V = 10.0  # typical velocity (cm/s)
+d = 1.0  # diffusion exponent (1.0 for linear motion)
+
+# Get animal's velocity at each time
+velocity_t = sess.position.speed  # cm/s
+
+# Compute sigma (uncertainty) for each time bin
+sigma_t = Zhang_Two_Step.sigma_t(v_t=velocity_t, K=K, V=V, d=d)
+
+# Compute scaling factors
+k_scaling = Zhang_Two_Step.compute_scaling_factor_k(
+    flat_p_x_given_n=posterior.reshape(-1, posterior.shape[1])
+)
+```
+
+## Validation and Quality Metrics
+
+### Decode Known Positions
+
+```python
+# Decode the session used to build placefields
+full_posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+    tau=time_bin_size,
+    P_x=P_x,
+    F=F,
+    n=unit_specific_binned_spike_counts
+)
+
+# Compare to actual position
+decoded_positions = pf1D.ratemap.xbin_centers[
+    np.argmax(full_posterior, axis=0)
+]
+
+# Get actual positions at time bin centers
+actual_positions = np.interp(
+    time_window_edges_binning_info.bin_centers,
+    sess.position.time,
+    sess.position.x
+)
+
+# Compute decoding error
+decoding_error = np.abs(decoded_positions - actual_positions)
+print(f'Mean decoding error: {np.mean(decoding_error):.2f} cm')
+print(f'Median decoding error: {np.median(decoding_error):.2f} cm')
+```
+
+### Posterior Quality
+
+```python
+# Analyze posterior distribution properties
+for time_idx in range(min(10, posterior.shape[1])):
+    time_posterior = posterior[:, time_idx]
+    
+    # Peak probability
+    max_prob = np.max(time_posterior)
+    
+    # Entropy (uncertainty)
+    entropy = -np.sum(time_posterior * np.log(time_posterior + 1e-10))
+    
+    # 95% credible interval width
+    cumsum = np.cumsum(np.sort(time_posterior)[::-1])
+    n_bins_95 = np.argmax(cumsum >= 0.95) + 1
+    
+    print(f'Time bin {time_idx}:')
+    print(f'  Max probability: {max_prob:.3f}')
+    print(f'  Entropy: {entropy:.2f}')
+    print(f'  95% CI bins: {n_bins_95}')
+```
+
+## Advanced: Custom Decoder Parameters
+
+```python
+# Use non-normalized tuning curves
+pf1D_ratemap = pf1D.ratemap
+raw_tuning_curves = pf1D_ratemap.tuning_curves  # Not normalized
+
+# Build F matrix from raw curves
+neuron_IDXs = np.arange(len(pf1D.cell_ids))
+f_i = [raw_tuning_curves[i, :] for i in neuron_IDXs]
+F_i = [np.reshape(f_i[i], (-1, 1)) for i in neuron_IDXs]
+F_raw = np.hstack(F_i)
+
+# Use uniform prior instead of occupancy
+P_x_uniform = np.ones((len(pf1D.ratemap.xbin_centers), 1))
+P_x_uniform = P_x_uniform / np.sum(P_x_uniform)
+
+# Decode with custom parameters
+custom_posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+    tau=time_bin_size,
+    P_x=P_x_uniform,  # Uniform prior
+    F=F_raw,  # Raw tuning curves
+    n=unit_specific_binned_spike_counts,
+    use_flat_computation_mode=True
+)
+```
+
+<Warning>
+**Memory Considerations**
+
+For long sessions or fine time bins:
+- Use `use_flat_computation_mode=True` to reduce memory usage
+- Process in smaller time chunks if needed
+- The posterior matrix can be large: `(n_pos_bins × n_time_bins × 8 bytes)`
+</Warning>
+
+## Complete Decoding Example
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import ZhangReconstructionImplementation
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Setup
+sess = curr_active_pipeline.sess
+pf1D = curr_active_pipeline.computation_results['maze1'].computed_data['pf1D']
+time_bin_size = 0.02
+
+# Build decoder components
+spikes_df = sess.spikes_df.copy()
+unit_specific_binned_spike_counts, time_edges, binning_info = \
+    ZhangReconstructionImplementation.time_bin_spike_counts_N_i(
+        spikes_df, time_bin_size=time_bin_size
+    )
+
+neuron_IDXs, neuron_IDs, f_i, F_i, F, P_x = \
+    ZhangReconstructionImplementation.build_concatenated_F(pf1D)
+
+# Decode
+posterior = ZhangReconstructionImplementation.neuropy_bayesian_prob(
+    tau=time_bin_size, P_x=P_x, F=F, n=unit_specific_binned_spike_counts
+)
+
+# Analyze results
+most_likely_positions = pf1D.ratemap.xbin_centers[
+    np.argmax(posterior, axis=0)
+]
+
+print(f'Decoded {posterior.shape[1]} time bins')
+print(f'Position range: [{most_likely_positions.min():.1f}, {most_likely_positions.max():.1f}] cm')
+
+# Visualize first 100 time bins
+plt.figure(figsize=(12, 6))
+plt.imshow(
+    posterior[:, :100], 
+    aspect='auto', 
+    origin='lower',
+    extent=[0, 100*time_bin_size, pf1D.ratemap.xbin_centers[0], pf1D.ratemap.xbin_centers[-1]]
+)
+plt.colorbar(label='Posterior Probability')
+plt.xlabel('Time (s)')
+plt.ylabel('Position (cm)')
+plt.title('Bayesian Decoded Position Posterior')
+plt.show()
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Replay Analysis" icon="repeat" href="/guides/replay-analysis">
+    Identify and analyze hippocampal replay events
+  </Card>
+  <Card title="Visualization" icon="chart-line" href="/guides/visualization">
+    Visualize decoded trajectories
+  </Card>
+</CardGroup>

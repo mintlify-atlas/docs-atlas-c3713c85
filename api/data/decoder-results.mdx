@@ -1,0 +1,533 @@
+---
+title: "Decoder Results"
+description: "Data structures for Bayesian decoder outputs and leave-one-out analysis"
+---
+
+## Overview
+
+The `decoder_result` module provides specialized data structures for storing and analyzing Bayesian decoding results, including leave-one-out analysis and surprise calculations.
+
+## Core Decoder Classes
+
+### DecoderResultDisplayingBaseClass
+
+Base class for displaying decoded position results.
+
+<ParamField path="decoder" type="BayesianPlacemapPositionDecoder" required>
+  The decoder object containing posteriors and placefields
+</ParamField>
+
+**Properties:**
+
+- `num_time_windows` (int): Number of decoded time windows
+- `active_time_windows` (ndarray): Array of (start, end) time pairs
+- `p_x_given_n` (ndarray): Posterior probability P(x|n) for all time bins
+- `pf` (PfND): Placefield object
+- `most_likely_positions` (ndarray): Most likely decoded positions
+
+**Methods:**
+
+- `setup()`: Initialize display components
+- `display(i)`: Display results for time window i
+
+---
+
+### DecoderResultDisplayingPlot2D
+
+Displays 2D decoder posteriors with matplotlib.
+
+<ParamField path="decoder" type="BayesianPlacemapPositionDecoder" required>
+  The decoder to visualize
+</ParamField>
+
+<ParamField path="position_df" type="DataFrame" required>
+  Position dataframe with columns ['t', 'x', 'y']
+</ParamField>
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.decoder_result import DecoderResultDisplayingPlot2D
+import matplotlib.pyplot as plt
+
+# Create display
+display = DecoderResultDisplayingPlot2D(
+    decoder=bayesian_decoder,
+    position_df=position_data
+)
+
+# Show time window 10
+fig = display.display(10)
+plt.show()
+
+# Animate through all windows
+for i in range(decoder.num_time_windows):
+    display.update(i)
+    plt.pause(0.1)
+```
+
+**Static Methods:**
+
+#### prepare_data_for_plotting
+
+Prepare posterior data for visualization.
+
+<ParamField path="p_x_given_n" type="ndarray" required>
+  Posterior probability array
+</ParamField>
+
+<ParamField path="drop_below_threshold" type="float" default="0.0000001">
+  Set values below this threshold to NaN
+</ParamField>
+
+<ResponseField name="processed_data" type="ndarray">
+  Processed posterior ready for plotting (rotated and flipped)
+</ResponseField>
+
+#### plot_single_decoder_result
+
+Plot a single decoder posterior heatmap.
+
+<ParamField path="xbin" type="ndarray" required>
+  X bin edges or centers
+</ParamField>
+
+<ParamField path="ybin" type="ndarray" required>
+  Y bin edges or centers
+</ParamField>
+
+<ParamField path="p_x_given_n" type="ndarray" required>
+  Posterior to plot
+</ParamField>
+
+<ParamField path="drop_below_threshold" type="float" default="0.0000001">
+  Threshold for masking low probabilities
+</ParamField>
+
+<ParamField path="final_string_components" type="list" default="[]">
+  Title components to join
+</ParamField>
+
+<ParamField path="ax" type="Axes">
+  Matplotlib axes (uses current axes if None)
+</ParamField>
+
+<ResponseField name="im" type="AxesImage">
+  The created image object
+</ResponseField>
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Plot a single posterior
+fig, ax = plt.subplots()
+im = DecoderResultDisplayingPlot2D.plot_single_decoder_result(
+    xbin=np.linspace(0, 100, 50),
+    ybin=np.linspace(0, 10, 20),
+    p_x_given_n=posterior_array,
+    final_string_components=['Time: 10.5s', 'Lap 3'],
+    ax=ax
+)
+plt.colorbar(im)
+plt.show()
+```
+
+---
+
+## Leave-One-Out Analysis
+
+### LeaveOneOutDecodingResult
+
+Stores results from leave-one-out decoding analysis.
+
+<ParamField path="one_left_out_to_global_surprises" type="Dict[int, ndarray]" default="{}">
+  Surprise values comparing left-out decoder to global decoder. Keys are neuron IDs.
+</ParamField>
+
+<ParamField path="one_left_out_posterior_to_pf_surprises" type="Dict[int, ndarray]" default="{}">
+  Surprise between posterior and placefield. Keys are neuron IDs.
+</ParamField>
+
+<ParamField path="one_left_out_posterior_to_pf_surprises_mean" type="Dict[int, float]" default="{}">
+  Mean surprise per neuron (computable)
+</ParamField>
+
+<ParamField path="one_left_out_posterior_to_scrambled_pf_surprises" type="Dict[int, ndarray]" default="{}">
+  Surprise with scrambled/shuffled placefields
+</ParamField>
+
+<ParamField path="one_left_out_posterior_to_scrambled_pf_surprises_mean" type="Dict[int, float]" default="{}">
+  Mean scrambled surprise per neuron (computable)
+</ParamField>
+
+<ParamField path="one_left_out_to_global_surprises_mean" type="dict" default="{}">
+  Mean global surprise values
+</ParamField>
+
+<ParamField path="shuffle_IDXs" type="ndarray">
+  Indices used for shuffling control
+</ParamField>
+
+<ParamField path="random_noise_curves" type="Dict[int, ndarray]" default="{}">
+  Random noise curves for null distribution
+</ParamField>
+
+<ParamField path="decoded_timebins_p_x_given_n" type="Dict[int, ndarray]" default="{}">
+  Decoded posteriors for each time bin
+</ParamField>
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.decoder_result import LeaveOneOutDecodingResult
+
+# Create result container
+result = LeaveOneOutDecodingResult()
+
+# Store surprise values for neuron 42
+result.one_left_out_posterior_to_pf_surprises[42] = surprise_array
+result.one_left_out_posterior_to_pf_surprises_mean[42] = surprise_array.mean()
+
+# Access results
+for neuron_id, surprises in result.one_left_out_posterior_to_pf_surprises.items():
+    print(f"Neuron {neuron_id}: mean surprise = {surprises.mean():.3f}")
+```
+
+---
+
+### TimebinnedNeuronActivity
+
+Tracks which neurons are active/inactive in each decoded time bin.
+
+<ParamField path="n_timebins" type="int" required>
+  Total number of time bins
+</ParamField>
+
+<ParamField path="active_IDXs" type="ndarray" required>
+  Ragged array of active neuron indices per time bin
+</ParamField>
+
+<ParamField path="active_aclus" type="ndarray" required>
+  Ragged array of active neuron IDs per time bin
+</ParamField>
+
+<ParamField path="inactive_IDXs" type="ndarray" required>
+  Ragged array of inactive neuron indices per time bin
+</ParamField>
+
+<ParamField path="inactive_aclus" type="ndarray" required>
+  Ragged array of inactive neuron IDs per time bin
+</ParamField>
+
+<ParamField path="time_bin_centers" type="ndarray" required>
+  Center time of each bin
+</ParamField>
+
+**Computed Fields:**
+
+- `num_timebin_active_aclus` (ndarray): Number of active neurons per bin
+- `is_timebin_valid` (ndarray): Boolean array indicating bins with at least one active neuron
+
+**Class Methods:**
+
+#### init_from_results_obj
+
+Initialize from a LeaveOneOutDecodingAnalysisResult.
+
+<ParamField path="results_obj" type="LeaveOneOutDecodingAnalysisResult" required>
+  Analysis results object
+</ParamField>
+
+<ResponseField name="activity" type="TimebinnedNeuronActivity">
+  Initialized activity tracker
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.decoder_result import TimebinnedNeuronActivity
+
+# Initialize from analysis results
+activity = TimebinnedNeuronActivity.init_from_results_obj(analysis_results)
+
+print(f"Total time bins: {activity.n_timebins}")
+print(f"Valid bins: {activity.is_timebin_valid.sum()}")
+
+# Check activity in bin 100
+if activity.is_timebin_valid[100]:
+    active_neurons = activity.active_aclus[100]
+    print(f"Bin 100 has {len(active_neurons)} active neurons: {active_neurons}")
+```
+
+---
+
+### LeaveOneOutDecodingAnalysisResult
+
+Complete results from leave-one-out decoding analysis including surprise calculations.
+
+<ParamField path="active_filter_epochs" type="Epoch" required>
+  Epochs used for analysis
+</ParamField>
+
+<ParamField path="original_1D_decoder" type="BasePositionDecoder" required>
+  Original decoder with all neurons
+</ParamField>
+
+<ParamField path="all_included_filter_epochs_decoder_result" type="DynamicContainer" required>
+  Decoding results with all neurons (non-serialized)
+</ParamField>
+
+<ParamField path="flat_all_epochs_measured_cell_spike_counts" type="ndarray" required>
+  Measured spike counts (n_neurons × n_total_time_bins)
+</ParamField>
+
+<ParamField path="flat_all_epochs_measured_cell_firing_rates" type="ndarray" required>
+  Measured firing rates (n_neurons × n_total_time_bins)
+</ParamField>
+
+<ParamField path="flat_all_epochs_decoded_epoch_time_bins" type="ndarray" required>
+  Time bin values (n_neurons × n_total_time_bins)
+</ParamField>
+
+<ParamField path="flat_all_epochs_computed_surprises" type="ndarray" required>
+  Computed surprise values (n_neurons × n_total_time_bins)
+</ParamField>
+
+<ParamField path="flat_all_epochs_computed_expected_cell_firing_rates" type="ndarray" required>
+  Expected firing rates from decoder (n_neurons × n_total_time_bins)
+</ParamField>
+
+<ParamField path="flat_all_epochs_difference_from_expected_cell_spike_counts" type="ndarray" required>
+  Difference: measured - expected spike counts
+</ParamField>
+
+<ParamField path="flat_all_epochs_difference_from_expected_cell_firing_rates" type="ndarray" required>
+  Difference: measured - expected firing rates
+</ParamField>
+
+<ParamField path="all_epochs_decoded_epoch_time_bins_mean" type="ndarray" required>
+  Mean time bins per epoch (n_epochs × n_neurons)
+</ParamField>
+
+<ParamField path="all_epochs_computed_cell_surprises_mean" type="ndarray" required>
+  Mean surprise per epoch per neuron (n_epochs × n_neurons)
+</ParamField>
+
+<ParamField path="all_epochs_all_cells_computed_surprises_mean" type="ndarray" required>
+  Mean surprise per epoch across all neurons (n_epochs,)
+</ParamField>
+
+<ParamField path="flat_all_epochs_computed_one_left_out_to_global_surprises" type="ndarray" required>
+  Leave-one-out vs global surprises (n_neurons × n_total_time_bins)
+</ParamField>
+
+<ParamField path="one_left_out_omitted_aclu_distance_df" type="DataFrame" required>
+  Distance metrics for omitted neurons (n_neurons × 3)
+</ParamField>
+
+<ParamField path="most_contributing_aclus" type="ndarray" required>
+  Neuron IDs sorted by contribution (n_neurons,)
+</ParamField>
+
+<ParamField path="result" type="LeaveOneOutDecodingResult">
+  Leave-one-out specific results (non-serialized)
+</ParamField>
+
+<ParamField path="timebinned_neuron_info" type="TimebinnedNeuronActivity">
+  Per-timebin activity information (non-serialized, computable)
+</ParamField>
+
+<ParamField path="result_df" type="DataFrame">
+  Results as a DataFrame
+</ParamField>
+
+<ParamField path="result_df_grouped" type="DataFrame">
+  Results grouped by epoch
+</ParamField>
+
+**Methods:**
+
+#### supplement_results
+
+Add computed fields and perform surprise analysis.
+
+<ResponseField name="self" type="LeaveOneOutDecodingAnalysisResult">
+  Returns self with supplemented results
+</ResponseField>
+
+```python
+# Supplement results with additional calculations
+results_obj = results_obj.supplement_results()
+
+# Access supplemented data
+print(f"Timebinned activity computed: {results_obj.timebinned_neuron_info is not None}")
+print(f"Result DataFrame shape: {results_obj.result_df.shape}")
+```
+
+#### get_results_subset
+
+Extract a subset of results for specific epochs.
+
+<ParamField path="epochs_df" type="DataFrame" required>
+  Epochs dataframe
+</ParamField>
+
+<ParamField path="epochs_decoder_result" type="DecodedFilterEpochsResult" required>
+  Full decoder results
+</ParamField>
+
+<ParamField path="included_epoch_indicies" type="list | ndarray" required>
+  Indices of epochs to include in subset
+</ParamField>
+
+<ResponseField name="subset_filter_epochs" type="DataFrame">
+  Filtered epochs dataframe
+</ResponseField>
+
+<ResponseField name="subset" type="DecodedFilterEpochsResult">
+  Filtered decoder results
+</ResponseField>
+
+```python
+# Get subset for specific epochs
+good_epochs = [0, 2, 5, 7, 10]
+subset_epochs, subset_results = LeaveOneOutDecodingAnalysisResult.get_results_subset(
+    epochs_df=results_obj.active_filter_epochs.to_dataframe(),
+    epochs_decoder_result=results_obj.all_included_filter_epochs_decoder_result,
+    included_epoch_indicies=good_epochs
+)
+
+print(f"Subset contains {len(subset_epochs)} epochs")
+```
+
+---
+
+## Analysis Functions
+
+### perform_leave_one_aclu_out_decoding_analysis
+
+Perform leave-one-out decoding analysis.
+
+<ParamField path="spikes_df" type="DataFrame" required>
+  Spike dataframe with columns ['t', 'aclu', ...]
+</ParamField>
+
+<ParamField path="active_pos_df" type="DataFrame" required>
+  Position dataframe with columns ['t', 'x', 'y', 'lin_pos']
+</ParamField>
+
+<ParamField path="active_filter_epochs" type="Epoch" required>
+  Epochs to decode
+</ParamField>
+
+<ParamField path="original_all_included_decoder" type="BasePositionDecoder">
+  Pre-built decoder (will create if None)
+</ParamField>
+
+<ParamField path="filter_epoch_description_list" type="list">
+  Descriptions for each epoch
+</ParamField>
+
+<ParamField path="decoding_time_bin_size" type="float" default="0.025">
+  Time bin size in seconds
+</ParamField>
+
+<ResponseField name="original_decoder" type="BasePositionDecoder">
+  Decoder with all neurons included
+</ResponseField>
+
+<ResponseField name="all_included_results" type="DecodedFilterEpochsResult">
+  Decoding results with all neurons
+</ResponseField>
+
+<ResponseField name="one_left_out_decoder_dict" type="Dict[int, BasePositionDecoder]">
+  Dictionary of decoders with one neuron omitted. Keys are omitted neuron IDs.
+</ResponseField>
+
+<ResponseField name="one_left_out_results_dict" type="Dict[int, DecodedFilterEpochsResult]">
+  Dictionary of decoding results for each leave-one-out decoder
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.decoder_result import perform_leave_one_aclu_out_decoding_analysis
+
+# Perform leave-one-out analysis
+(
+    original_decoder,
+    all_included_results,
+    one_left_out_decoder_dict,
+    one_left_out_results_dict
+) = perform_leave_one_aclu_out_decoding_analysis(
+    spikes_df=pyramidal_spikes,
+    active_pos_df=position_df,
+    active_filter_epochs=replay_epochs,
+    decoding_time_bin_size=0.025
+)
+
+print(f"Created {len(one_left_out_decoder_dict)} leave-one-out decoders")
+
+# Access results for specific neuron
+neuron_id = 42
+if neuron_id in one_left_out_results_dict:
+    result = one_left_out_results_dict[neuron_id]
+    print(f"Decoded {result.num_filter_epochs} epochs without neuron {neuron_id}")
+```
+
+---
+
+## Example: Complete Leave-One-Out Workflow
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.decoder_result import (
+    perform_leave_one_aclu_out_decoding_analysis,
+    LeaveOneOutDecodingAnalysisResult,
+    TimebinnedNeuronActivity
+)
+import numpy as np
+import pandas as pd
+
+# Step 1: Perform leave-one-out decoding
+(
+    original_decoder,
+    all_included_results,
+    one_left_out_decoder_dict,
+    one_left_out_results_dict
+) = perform_leave_one_aclu_out_decoding_analysis(
+    spikes_df=spikes_df,
+    active_pos_df=position_df,
+    active_filter_epochs=epochs,
+    decoding_time_bin_size=0.025
+)
+
+# Step 2: Build analysis result object
+analysis_result = LeaveOneOutDecodingAnalysisResult(
+    active_filter_epochs=epochs,
+    original_1D_decoder=original_decoder,
+    all_included_filter_epochs_decoder_result=all_included_results,
+    # ... other required fields
+)
+
+# Step 3: Supplement with additional calculations
+analysis_result = analysis_result.supplement_results()
+
+# Step 4: Access timebinned activity
+activity = analysis_result.timebinned_neuron_info
+print(f"Valid time bins: {activity.is_timebin_valid.sum()} / {activity.n_timebins}")
+
+# Step 5: Analyze results
+result_df = analysis_result.result_df
+print("\nSurprise statistics per time bin:")
+print(result_df[['posterior_to_pf_mean_surprise', 'posterior_to_scrambled_pf_mean_surprise']].describe())
+
+# Step 6: Group by epoch
+epoch_df = analysis_result.result_df_grouped
+print("\nMean surprise per epoch:")
+print(epoch_df['posterior_to_pf_mean_surprise'].head())
+
+# Step 7: Identify most contributing neurons
+top_neurons = analysis_result.most_contributing_aclus[:10]
+print(f"\nTop 10 contributing neurons: {top_neurons}")
+```
+
+---
+
+## See Also
+
+- [Positional Data](/api/data/positional-data) - Input data structures
+- [Computation Results](/api/data/computation-results) - General result containers
+- [Bayesian Decoders](/api/analysis/decoders) - Decoder implementations

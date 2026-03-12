@@ -1,0 +1,292 @@
+---
+title: 'Pipeline Architecture'
+description: 'Understanding the NeuropyPipeline system for electrophysiology data analysis'
+icon: 'diagram-project'
+---
+
+## Overview
+
+The `NeuropyPipeline` is the central orchestration system in pyPhoPlaceCellAnalysis. It provides a structured, stage-based approach to loading, filtering, computing, and displaying neurophysiology data.
+
+<Info>
+The pipeline design ensures reproducibility by tracking computations and allowing serialization of the entire analysis state.
+</Info>
+
+## Pipeline Stages
+
+The pipeline progresses through four distinct stages, each building upon the previous:
+
+<Steps>
+  <Step title="Loading Stage">
+    Initialize and load raw session data from disk
+    
+    ```python
+    from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+    
+    # Initialize from known data session type
+    curr_active_pipeline = NeuropyPipeline.init_from_known_data_session_type(
+        'kdiba', 
+        known_data_session_type_properties,
+        override_basepath=basepath
+    )
+    ```
+  </Step>
+  
+  <Step title="Filtering Stage">
+    Apply filters to create analysis-specific sessions
+    
+    ```python
+    # Filter sessions by epochs or other criteria
+    curr_active_pipeline.filter_sessions(
+        active_session_filter_configurations
+    )
+    ```
+  </Step>
+  
+  <Step title="Computation Stage">
+    Compute placefields, decoders, and other analyses
+    
+    ```python
+    # Perform all registered computations
+    curr_active_pipeline.perform_computations(
+        computation_functions_name_includelist=['merged_directional_placefields']
+    )
+    ```
+  </Step>
+  
+  <Step title="Display Stage">
+    Generate visualizations and outputs
+    
+    ```python
+    # Prepare display outputs
+    curr_active_pipeline.prepare_for_display(
+        display_function_name='_display_directional_merged_pfs'
+    )
+    ```
+  </Step>
+</Steps>
+
+## Core Architecture
+
+### Stage Hierarchy
+
+The pipeline uses a hierarchical stage system defined in `NeuropyPipeline.py:297-361`:
+
+```python
+class NeuropyPipeline(
+    PipelineWithInputStage,
+    PipelineWithLoadableStage, 
+    FilteredPipelineMixin,
+    PipelineWithComputedPipelineStageMixin,
+    PipelineWithDisplayPipelineStageMixin,
+    PipelineWithDisplaySavingMixin,
+    HDF_SerializationMixin
+):
+    """Main pipeline class for electrophysiology analysis"""
+```
+
+### Accessing the Session
+
+The active session is accessed through `curr_active_pipeline.sess`:
+
+```python
+# Access session properties
+session_name = curr_active_pipeline.session_name
+spikes_df = curr_active_pipeline.sess.spikes_df
+position = curr_active_pipeline.sess.position
+```
+
+## Computation Results Storage
+
+### Filtered Session Results
+
+Results for each filtered session are stored in `computation_results`:
+
+```python
+# Access computation results for a specific filter
+result = curr_active_pipeline.computation_results['maze1_PYR']
+
+# Get place fields
+pf1D = result.computed_data['pf1D']
+pf2D = result.computed_data['pf2D']
+
+# Get decoders
+decoder = result.computed_data['pf2D_Decoder']
+```
+
+### Global Computation Results
+
+Cross-session computations are stored separately:
+
+```python
+# Access global results
+global_results = curr_active_pipeline.global_computation_results
+
+# Example: directional placefields across all sessions
+directional_pfs = global_results.computed_data['DirectionalPlacefieldGlobalComputationFunctions']
+```
+
+## Pipeline Serialization
+
+### Saving the Pipeline
+
+The pipeline can be pickled to avoid recomputing:
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import PipelineSavingScheme
+
+# Save with temporary file protection
+curr_active_pipeline.save_pipeline(
+    saving_mode=PipelineSavingScheme.TEMP_THEN_OVERWRITE,
+    active_pickle_filename='loadedSessPickle.pkl'
+)
+```
+
+<Note>
+`TEMP_THEN_OVERWRITE` mode saves to a temporary file first, preventing corruption if saving fails.
+</Note>
+
+### Loading a Saved Pipeline
+
+Load previously computed pipelines:
+
+```python
+# Try to load from pickle, or create new if not found
+curr_active_pipeline = NeuropyPipeline.try_init_from_saved_pickle_or_reload_if_needed(
+    type_name='kdiba',
+    known_type_properties=known_data_session_type_dict['kdiba'],
+    active_pickle_filename='loadedSessPickle.pkl',
+    force_reload=False  # Set True to ignore pickle and reload from raw data
+)
+```
+
+### Custom Filenames
+
+Save with custom parameters in the filename:
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import save_custom_parameters_pipeline
+
+custom_save_filepaths, custom_suffix = save_custom_parameters_pipeline(
+    a_curr_active_pipeline=curr_active_pipeline,
+    epochs_source='normal_computed',
+    minimum_inclusion_fr_Hz=2.0,
+    included_qclu_values=[1, 2, 4, 6, 7, 9],
+    enable_save_pipeline_pkl=True
+)
+# Saves as: 'loadedSessPickle_withNormalComputedReplays-qclu_1246789-frateThresh_2.0.pkl'
+```
+
+## Pipeline State Tracking
+
+### Checking Pipeline Progress
+
+```python
+# Check which stage the pipeline has reached
+if curr_active_pipeline.is_filtered:
+    print("Filtering complete")
+    
+if curr_active_pipeline.is_computed:
+    print("Computations complete")
+    
+# Get last completed stage
+last_stage = curr_active_pipeline.last_completed_stage
+print(f"Last completed: {last_stage}")
+```
+
+### Tracking Changes Since Save
+
+```python
+# Check if pipeline needs to be re-saved
+if curr_active_pipeline.updated_since_last_pickle:
+    print("Pipeline has changed since last save")
+    curr_active_pipeline.save_pipeline()
+```
+
+## Advanced Features
+
+### Pipeline Comparison
+
+Compare two pipeline states:
+
+```python
+# Build comparison dictionaries
+compare_dict_1 = NeuropyPipeline.build_pipeline_compare_dict(pipeline_1)
+compare_dict_2 = NeuropyPipeline.build_pipeline_compare_dict(pipeline_2)
+
+# Compute differences
+diff = NeuropyPipeline.compare_pipelines(compare_dict_1, compare_dict_2)
+print(f"Differences: {diff}")
+```
+
+### Logging
+
+The pipeline includes built-in logging:
+
+```python
+# Access the logger
+logger = curr_active_pipeline.logger
+logger.info("Custom log message")
+
+# Get log file path
+log_path = curr_active_pipeline.logger_path
+```
+
+## Best Practices
+
+<Accordion title="Memory Management">
+Large pipelines can consume significant memory. Use pickling strategically:
+
+```python
+# Save after expensive computations
+curr_active_pipeline.perform_computations(['pf2D', 'pf2D_Decoder'])
+curr_active_pipeline.save_pipeline()
+
+# Clear display outputs to save memory
+curr_active_pipeline.clear_display_outputs()
+```
+</Accordion>
+
+<Accordion title="Reproducibility">
+Always record pipeline parameters:
+
+```python
+# Get complete session context for reproducibility
+complete_context, (session_context, additional_context) = \
+    curr_active_pipeline.get_complete_session_context()
+
+print(f"Session: {session_context}")
+print(f"Additional params: {additional_context}")
+```
+</Accordion>
+
+<Accordion title="Error Recovery">
+Handle computation errors gracefully:
+
+```python
+# Check for incomplete computations
+incomplete = curr_active_pipeline.active_incomplete_computation_result_status_dicts
+
+if incomplete:
+    print(f"Failed computations: {incomplete}")
+    # Re-run failed computations
+    curr_active_pipeline.rerun_failed_computations()
+```
+</Accordion>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Data Loading" icon="file-import" href="/concepts/data-loading">
+    Learn how the pipeline loads different data formats
+  </Card>
+  <Card title="Place Cells" icon="map-marker" href="/concepts/place-cells">
+    Understand place field computations in the pipeline
+  </Card>
+  <Card title="Decoders" icon="brain" href="/concepts/decoders">
+    Explore Bayesian position decoding
+  </Card>
+  <Card title="Computation Functions" icon="function" href="/api/pipeline/computation-stages">
+    Browse available computation functions
+  </Card>
+</CardGroup>

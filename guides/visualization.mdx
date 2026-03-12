@@ -1,0 +1,430 @@
+---
+title: 'Visualization'
+description: 'Create publication-quality visualizations of placefields, trajectories, and decoded results'
+icon: 'chart-line'
+---
+
+## Overview
+
+PyPhoPlaceCellAnalysis provides comprehensive visualization tools for neural data, including 1D/2D placefields, spike rasters, decoded posteriors, and replay events. The framework supports both matplotlib and PyVista for 2D and 3D visualizations.
+
+## Placefield Visualization
+
+### 1D Placefield Plots
+
+Visualize individual neuron tuning curves and spiking activity:
+
+```python
+import matplotlib.pyplot as plt
+from pyphoplacecellanalysis.PhoPositionalData.plotting.placefield import plot_placefield_tuning_curve
+
+# Get placefield data
+pf1D = curr_active_pipeline.computation_results['maze1'].computed_data['pf1D']
+
+# Plot tuning curve for a specific neuron
+cell_idx = 0
+cell_id = pf1D.cell_ids[cell_idx]
+
+fig, ax = plt.subplots(figsize=(10, 4))
+
+# Plot the tuning curve
+ax = plot_placefield_tuning_curve(
+    xbin_centers=pf1D.ratemap.xbin_centers,
+    tuning_curve=pf1D.ratemap.normalized_tuning_curves[cell_idx, :],
+    ax=ax,
+    is_horizontal=False,
+    color='green',
+    fill_alpha=0.3,
+    border_line_alpha=0.8
+)
+
+ax.set_xlabel('Position (cm)')
+ax.set_ylabel('Normalized Firing Rate')
+ax.set_title(f'Placefield - Cell {cell_id}')
+plt.tight_layout()
+plt.show()
+```
+
+### Multi-Cell Placefield Validation
+
+<Tip>
+Use the built-in validation plots to visualize spiking vs. position:
+</Tip>
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.plotting.placefield import plot_1d_placecell_validations
+
+# Create validation plots for all cells
+render_plots = plot_1d_placecell_validations(
+    active_placefields1D=pf1D,
+    plotting_config=curr_active_pipeline.plotting_config,
+    should_save=False,
+    modifier_string='',
+    save_mode='separate_files'
+)
+
+# Access individual figures
+for i, fig in enumerate(render_plots.figures):
+    print(f'Figure {i}: Cell {pf1D.cell_ids[i]}')
+
+# Show tabbed interface
+render_plots.ui.show()
+```
+
+## Decoded Posterior Visualization
+
+### Basic Posterior Heatmap
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Assume we have decoded posterior from decoding guide
+# posterior.shape = (n_position_bins, n_time_bins)
+
+fig, ax = plt.subplots(figsize=(14, 6))
+
+# Create heatmap
+im = ax.imshow(
+    posterior,
+    aspect='auto',
+    origin='lower',
+    extent=[
+        time_bins[0], 
+        time_bins[-1],
+        pf1D.ratemap.xbin_centers[0],
+        pf1D.ratemap.xbin_centers[-1]
+    ],
+    cmap='hot',
+    interpolation='nearest'
+)
+
+ax.set_xlabel('Time (s)', fontsize=12)
+ax.set_ylabel('Position (cm)', fontsize=12)
+ax.set_title('Bayesian Decoded Posterior', fontsize=14)
+
+# Add colorbar
+cbar = plt.colorbar(im, ax=ax)
+cbar.set_label('Posterior Probability', fontsize=11)
+
+# Overlay most likely trajectory
+most_likely_positions = pf1D.ratemap.xbin_centers[np.argmax(posterior, axis=0)]
+ax.plot(time_bins, most_likely_positions, 'cyan', linewidth=2, label='Decoded Path')
+ax.legend(loc='upper right')
+
+plt.tight_layout()
+plt.show()
+```
+
+### Posterior with Confidence Intervals
+
+```python
+# Compute credible intervals
+from scipy import stats
+
+def compute_credible_interval(posterior_column, xbin_centers, confidence=0.95):
+    """Compute credible interval for a single time bin."""
+    # Sort by probability
+    sorted_idx = np.argsort(posterior_column)[::-1]
+    cumsum = np.cumsum(posterior_column[sorted_idx])
+    
+    # Find bins within credible interval
+    in_interval = sorted_idx[cumsum <= confidence]
+    
+    if len(in_interval) > 0:
+        return xbin_centers[in_interval].min(), xbin_centers[in_interval].max()
+    else:
+        max_idx = np.argmax(posterior_column)
+        return xbin_centers[max_idx], xbin_centers[max_idx]
+
+# Compute intervals for each time bin
+ci_lower = []
+ci_upper = []
+
+for t_idx in range(posterior.shape[1]):
+    lower, upper = compute_credible_interval(
+        posterior[:, t_idx],
+        pf1D.ratemap.xbin_centers,
+        confidence=0.95
+    )
+    ci_lower.append(lower)
+    ci_upper.append(upper)
+
+ci_lower = np.array(ci_lower)
+ci_upper = np.array(ci_upper)
+
+# Plot with confidence bands
+fig, ax = plt.subplots(figsize=(14, 6))
+
+ax.fill_between(time_bins, ci_lower, ci_upper, alpha=0.3, color='blue', label='95% CI')
+ax.plot(time_bins, most_likely_positions, 'b-', linewidth=2, label='Most Likely')
+
+ax.set_xlabel('Time (s)')
+ax.set_ylabel('Position (cm)')
+ax.set_title('Decoded Position with Confidence Interval')
+ax.legend()
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
+## Replay Event Visualization
+
+### Multi-Panel Replay Figure
+
+```python
+def plot_replay_event(posterior, positions, time_bins, pf1D, spike_times_dict=None):
+    """
+    Create comprehensive replay visualization.
+    
+    Parameters
+    ----------
+    posterior : ndarray
+        Decoded posterior (n_pos_bins, n_time_bins)
+    positions : ndarray
+        Most likely positions
+    time_bins : ndarray
+        Time bin centers
+    pf1D : PfND
+        Placefield object
+    spike_times_dict : dict, optional
+        {neuron_id: spike_times_array}
+    """
+    fig = plt.figure(figsize=(14, 10))
+    gs = fig.add_gridspec(3, 1, height_ratios=[2, 1, 1], hspace=0.3)
+    
+    # Panel 1: Posterior heatmap
+    ax1 = fig.add_subplot(gs[0])
+    im = ax1.imshow(
+        posterior,
+        aspect='auto',
+        origin='lower',
+        extent=[time_bins[0], time_bins[-1], 
+                pf1D.ratemap.xbin_centers[0], pf1D.ratemap.xbin_centers[-1]],
+        cmap='hot'
+    )
+    ax1.plot(time_bins, positions, 'cyan', linewidth=2.5, label='Decoded trajectory')
+    ax1.set_ylabel('Position (cm)', fontsize=12)
+    ax1.set_title('Bayesian Decoded Posterior', fontsize=14, fontweight='bold')
+    ax1.legend(loc='upper right')
+    cbar = plt.colorbar(im, ax=ax1)
+    cbar.set_label('P(position|spikes)', fontsize=11)
+    
+    # Panel 2: Decoded trajectory
+    ax2 = fig.add_subplot(gs[1], sharex=ax1)
+    ax2.plot(time_bins, positions, 'b-', linewidth=2)
+    ax2.fill_between(time_bins, positions, alpha=0.3, color='blue')
+    ax2.set_ylabel('Position (cm)', fontsize=12)
+    ax2.set_title('Decoded Trajectory', fontsize=12)
+    ax2.grid(True, alpha=0.3)
+    
+    # Panel 3: Spike raster (if provided)
+    if spike_times_dict is not None:
+        ax3 = fig.add_subplot(gs[2], sharex=ax1)
+        
+        for neuron_idx, (neuron_id, spike_times) in enumerate(spike_times_dict.items()):
+            # Filter spikes within time window
+            spikes_in_window = spike_times[
+                (spike_times >= time_bins[0]) & (spike_times <= time_bins[-1])
+            ]
+            ax3.scatter(spikes_in_window, 
+                       np.ones_like(spikes_in_window) * neuron_idx,
+                       marker='|', s=50, color='black', alpha=0.7)
+        
+        ax3.set_ylabel('Neuron ID', fontsize=12)
+        ax3.set_xlabel('Time (s)', fontsize=12)
+        ax3.set_title('Spike Raster', fontsize=12)
+        ax3.set_ylim(-0.5, len(spike_times_dict) - 0.5)
+    else:
+        ax2.set_xlabel('Time (s)', fontsize=12)
+    
+    plt.tight_layout()
+    return fig
+
+# Usage
+fig = plot_replay_event(
+    posterior=replay['posterior'],
+    positions=replay['positions'],
+    time_bins=replay['time_bins'],
+    pf1D=pf1D
+)
+plt.show()
+```
+
+## Position and Trajectory Plots
+
+### Animal Path with Spike Overlay
+
+```python
+# Plot animal's path with place cell spikes
+fig, ax = plt.subplots(figsize=(10, 8))
+
+# Plot trajectory
+position = sess.position
+ax.plot(position.x, position.y, 'gray', alpha=0.3, linewidth=0.5, label='Path')
+
+# Overlay spikes for a specific cell
+cell_id = pf1D.cell_ids[0]
+cell_spikes = spikes_df[spikes_df['aclu'] == cell_id]
+
+# Interpolate positions at spike times
+spike_x = np.interp(cell_spikes['t_rel_seconds'], position.time, position.x)
+spike_y = np.interp(cell_spikes['t_rel_seconds'], position.time, position.y)
+
+ax.scatter(spike_x, spike_y, c='red', s=10, alpha=0.6, label=f'Cell {cell_id} spikes')
+
+ax.set_xlabel('X Position (cm)')
+ax.set_ylabel('Y Position (cm)')
+ax.set_title('Animal Trajectory with Spike Locations')
+ax.legend()
+ax.axis('equal')
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+```
+
+### 2D Occupancy and Ratemap
+
+```python
+# For 2D placefields
+if 'pf2D' in curr_active_pipeline.computation_results['maze1'].computed_data:
+    pf2D = curr_active_pipeline.computation_results['maze1'].computed_data['pf2D']
+    
+    cell_idx = 0
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Occupancy map
+    ax = axes[0]
+    im1 = ax.imshow(pf2D.occupancy.T, origin='lower', cmap='viridis', aspect='auto')
+    ax.set_title('Occupancy Map', fontsize=14)
+    ax.set_xlabel('X Bin')
+    ax.set_ylabel('Y Bin')
+    plt.colorbar(im1, ax=ax, label='Time (s)')
+    
+    # Ratemap for specific cell
+    ax = axes[1]
+    ratemap = pf2D.ratemap.tuning_curves[cell_idx, :, :]
+    im2 = ax.imshow(ratemap.T, origin='lower', cmap='hot', aspect='auto')
+    ax.set_title(f'Firing Rate Map - Cell {pf2D.cell_ids[cell_idx]}', fontsize=14)
+    ax.set_xlabel('X Bin')
+    ax.set_ylabel('Y Bin')
+    plt.colorbar(im2, ax=ax, label='Firing Rate (Hz)')
+    
+    plt.tight_layout()
+    plt.show()
+```
+
+## Saving Figures
+
+### Save Individual Figures
+
+```python
+from pathlib import Path
+
+# Create output directory
+output_dir = Path('output/figures')
+output_dir.mkdir(parents=True, exist_ok=True)
+
+# Save with high DPI
+fig.savefig(
+    output_dir / 'replay_event_01.png',
+    dpi=300,
+    bbox_inches='tight',
+    facecolor='white'
+)
+
+# Save as PDF for publication
+fig.savefig(
+    output_dir / 'replay_event_01.pdf',
+    bbox_inches='tight',
+    facecolor='white'
+)
+
+print(f'Figures saved to {output_dir}')
+```
+
+### Multi-Page PDF
+
+```python
+from matplotlib.backends.backend_pdf import PdfPages
+
+# Create multiple figures
+figures = []
+
+for i in range(5):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    # ... create your plot ...
+    figures.append(fig)
+
+# Save to multi-page PDF
+pdf_path = output_dir / 'all_replays.pdf'
+
+with PdfPages(pdf_path) as pdf:
+    for fig in figures:
+        pdf.savefig(fig, bbox_inches='tight')
+        plt.close(fig)
+
+print(f'Multi-page PDF saved to {pdf_path}')
+```
+
+## Customizing Plot Styles
+
+```python
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+# Set publication style
+plt.style.use('seaborn-v0_8-paper')
+
+# Custom parameters
+mpl.rcParams['font.size'] = 11
+mpl.rcParams['axes.labelsize'] = 12
+mpl.rcParams['axes.titlesize'] = 14
+mpl.rcParams['xtick.labelsize'] = 10
+mpl.rcParams['ytick.labelsize'] = 10
+mpl.rcParams['legend.fontsize'] = 10
+mpl.rcParams['figure.titlesize'] = 14
+mpl.rcParams['lines.linewidth'] = 1.5
+
+# Use custom colormap
+from matplotlib.colors import LinearSegmentedColormap
+
+colors = ['#000033', '#0066CC', '#00CCCC', '#FFFF00', '#FF0000']
+n_bins = 256
+cmap_name = 'custom_hot'
+custom_cmap = LinearSegmentedColormap.from_list(cmap_name, colors, N=n_bins)
+
+# Use in plot
+im = ax.imshow(posterior, cmap=custom_cmap)
+```
+
+<Tip>
+**Best Practices**
+- Use high DPI (≥300) for publication figures
+- Save as both PNG (for presentations) and PDF/SVG (for publications)
+- Label all axes with units
+- Include colorbars with clear labels
+- Use consistent color schemes across related figures
+</Tip>
+
+<Note>
+**Interactive Visualization**
+
+For interactive exploration, consider:
+- Using `%matplotlib widget` in Jupyter for pan/zoom
+- PyVista for 3D interactive visualizations
+- Plotly for web-based interactive plots
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Data Import" icon="file-import" href="/guides/data-import">
+    Return to data import guide
+  </Card>
+  <Card title="Batch Processing" icon="layer-group" href="/guides/batch-processing">
+    Process and visualize multiple sessions
+  </Card>
+</CardGroup>

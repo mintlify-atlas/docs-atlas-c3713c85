@@ -1,0 +1,432 @@
+---
+title: 'Place Cells and Place Fields'
+description: 'Computing and analyzing spatial firing patterns of hippocampal neurons'
+icon: 'map-marker'
+---
+
+## What are Place Cells?
+
+Place cells are hippocampal neurons that exhibit spatially-selective firing patterns. Each place cell fires preferentially when an animal is in a specific location in the environment, called the neuron's **place field**.
+
+<Info>
+Place cells were discovered by John O'Keefe and colleagues in 1971, work that earned the 2014 Nobel Prize in Physiology or Medicine.
+</Info>
+
+### Key Characteristics
+
+- **Spatial Selectivity**: Fires strongly in specific locations
+- **Stability**: Fields remain consistent across time within a session  
+- **Context Dependence**: Can remap in different environments
+- **Theta Modulation**: Often phase-locked to theta rhythm (6-12 Hz)
+
+## Place Field Computation
+
+### Basic 2D Place Fields
+
+Compute place fields from spike and position data:
+
+```python
+from neuropy.analyses.placefields import PlacefieldComputationParameters, perform_compute_placefields
+
+# Define computation parameters
+pf_params = PlacefieldComputationParameters(
+    speed_thresh=10.0,          # Minimum speed (cm/s)
+    grid_bin=(3.0, 3.0),        # Spatial bins: 3cm x 3cm
+    smooth=(2.0, 2.0),          # Gaussian smoothing sigma
+    frate_thresh=0.2,           # Minimum firing rate (Hz)
+    time_bin_size=0.02          # Time window for rate (20ms)
+)
+
+# Compute place fields
+pf2D = perform_compute_placefields(
+    sess=curr_active_pipeline.sess,
+    config=pf_params
+)
+
+# Access place field properties
+print(f"Number of neurons: {pf2D.ratemap.n_neurons}")
+print(f"Grid shape: {pf2D.ratemap.xbin.shape} x {pf2D.ratemap.ybin.shape}")
+```
+
+### Ratemap Structure
+
+The core data structure is the `Ratemap`:
+
+```python
+# Access ratemap from place fields
+ratemap = pf2D.ratemap
+
+# Neuron information
+neuron_ids = ratemap.neuron_ids       # Array of neuron IDs
+n_neurons = ratemap.n_neurons         # Number of neurons
+
+# Spatial binning
+xbin_centers = ratemap.xbin           # X bin centers (cm)
+ybin_centers = ratemap.ybin           # Y bin centers (cm)
+
+# Tuning curves (firing rate maps)
+tuning_curves = ratemap.tuning_curves  # Shape: (n_neurons, n_xbins, n_ybins)
+
+# Occupancy (time spent in each bin)
+occupancy = pf2D.occupancy            # Shape: (n_xbins, n_ybins)
+
+# Get tuning curve for specific neuron
+neuron_idx = 5
+tuning_curve_neuron_5 = tuning_curves[neuron_idx, :, :]  # 2D rate map
+```
+
+### Computation Pipeline Integration
+
+Place fields are computed in the pipeline:
+
+```python
+# In pipeline computation stage
+curr_active_pipeline.perform_computations(
+    computation_functions_name_includelist=['pf1D', 'pf2D']
+)
+
+# Access computed place fields
+for session_name in curr_active_pipeline.filtered_session_names:
+    result = curr_active_pipeline.computation_results[session_name]
+    
+    pf1D = result.computed_data.get('pf1D', None)
+    pf2D = result.computed_data.get('pf2D', None)
+    
+    if pf2D is not None:
+        print(f"{session_name}: {pf2D.ratemap.n_neurons} place cells")
+```
+
+## 1D vs 2D Place Fields
+
+### 1D Place Fields (Linear Track)
+
+For linear track experiments:
+
+```python
+# 1D parameters - single spatial dimension
+pf_params_1D = PlacefieldComputationParameters(
+    speed_thresh=10.0,
+    grid_bin=(5.0,),            # 5cm bins along track
+    smooth=(2.0,),              # 1D smoothing
+    frate_thresh=0.2,
+    time_bin_size=0.02
+)
+
+# Compute 1D place fields
+pf1D = perform_compute_placefields(
+    sess=curr_active_pipeline.sess,
+    config=pf_params_1D  
+)
+
+# Access 1D tuning curves
+tuning_curves_1D = pf1D.ratemap.tuning_curves  # Shape: (n_neurons, n_bins)
+
+# Plot neuron's 1D place field
+import matplotlib.pyplot as plt
+
+neuron_idx = 10
+plt.plot(pf1D.ratemap.xbin, tuning_curves_1D[neuron_idx, :])
+plt.xlabel('Position (cm)')
+plt.ylabel('Firing Rate (Hz)')
+plt.title(f'Place Field - Neuron {pf1D.ratemap.neuron_ids[neuron_idx]}')
+plt.show()
+```
+
+### 2D Place Fields (Open Field)
+
+For 2D environments:
+
+```python
+# 2D parameters - x and y dimensions
+pf_params_2D = PlacefieldComputationParameters(
+    speed_thresh=10.0,
+    grid_bin=(3.0, 3.0),        # 3cm x 3cm bins
+    smooth=(2.0, 2.0),          # 2D Gaussian smoothing
+    frate_thresh=0.2,
+    time_bin_size=0.02
+)
+
+pf2D = perform_compute_placefields(
+    sess=curr_active_pipeline.sess,
+    config=pf_params_2D
+)
+
+# Visualize 2D place field
+import numpy as np
+
+neuron_idx = 10  
+rate_map_2D = pf2D.ratemap.tuning_curves[neuron_idx, :, :]
+
+plt.imshow(rate_map_2D.T, origin='lower', aspect='auto', 
+           extent=[pf2D.ratemap.xbin.min(), pf2D.ratemap.xbin.max(),
+                   pf2D.ratemap.ybin.min(), pf2D.ratemap.ybin.max()])
+plt.colorbar(label='Firing Rate (Hz)')
+plt.xlabel('X Position (cm)')
+plt.ylabel('Y Position (cm)')
+plt.title(f'2D Place Field - Neuron {pf2D.ratemap.neuron_ids[neuron_idx]}')
+plt.show()
+```
+
+## Place Field Properties
+
+### Field Detection and Metrics
+
+```python
+from neuropy.analyses.placefields import PlacefieldComputationParameters
+
+# Parameters affect field detection
+pf_params = PlacefieldComputationParameters(
+    speed_thresh=10.0,          # Only use periods with speed > 10 cm/s
+    grid_bin=(3.0, 3.0),        
+    smooth=(2.0, 2.0),          # Smoothing reduces noise
+    frate_thresh=0.2,           # Minimum mean firing rate to be considered
+    time_bin_size=0.02
+)
+
+# Compute with filtering
+pf = perform_compute_placefields(sess, pf_params)
+
+# Neurons that pass firing rate threshold
+active_neuron_mask = pf.ratemap.tuning_curves.mean(axis=(1,2)) > pf_params.frate_thresh
+active_neurons = pf.ratemap.neuron_ids[active_neuron_mask]
+print(f"Active place cells: {len(active_neurons)}/{pf.ratemap.n_neurons}")
+```
+
+### Peak Firing Locations
+
+```python
+# Find peak firing location for each neuron
+for neuron_idx in range(pf2D.ratemap.n_neurons):
+    tuning_curve = pf2D.ratemap.tuning_curves[neuron_idx, :, :]
+    
+    # Find peak
+    peak_idx = np.unravel_index(np.argmax(tuning_curve), tuning_curve.shape)
+    peak_x = pf2D.ratemap.xbin[peak_idx[0]]
+    peak_y = pf2D.ratemap.ybin[peak_idx[1]] 
+    peak_rate = tuning_curve[peak_idx]
+    
+    neuron_id = pf2D.ratemap.neuron_ids[neuron_idx]
+    print(f"Neuron {neuron_id}: Peak at ({peak_x:.1f}, {peak_y:.1f}) cm, "
+          f"{peak_rate:.2f} Hz")
+```
+
+## Multi-Context Analysis
+
+### Directional Place Fields
+
+Analyze place fields separately for different running directions:
+
+```python
+# Compute directional place fields globally
+curr_active_pipeline.perform_global_computation(
+    computation_functions_name_includelist=['DirectionalPlacefieldGlobalComputationFunctions']
+)
+
+# Access directional results
+directional_pfs = curr_active_pipeline.global_computation_results.computed_data[
+    'DirectionalPlacefieldGlobalComputationFunctions'
+]
+
+# Separate place fields for left/right (or forward/backward)
+pf_LR = directional_pfs['pf1D_Decoder_dict']['long_LR']
+pf_RL = directional_pfs['pf1D_Decoder_dict']['long_RL']
+
+# Compare directional selectivity
+for neuron_idx in range(pf_LR.ratemap.n_neurons):
+    rate_LR = pf_LR.ratemap.tuning_curves[neuron_idx, :].max()
+    rate_RL = pf_RL.ratemap.tuning_curves[neuron_idx, :].max()
+    
+    directionality = abs(rate_LR - rate_RL) / (rate_LR + rate_RL + 1e-10)
+    print(f"Neuron {neuron_idx}: Directionality = {directionality:.3f}")
+```
+
+### Context Remapping
+
+Compare place fields across different behavioral contexts:
+
+```python
+# Access place fields from different filtered sessions
+pf_maze1 = curr_active_pipeline.computation_results['maze1'].computed_data['pf2D']
+pf_maze2 = curr_active_pipeline.computation_results['maze2'].computed_data['pf2D']
+
+# Find common neurons
+common_neurons = np.intersect1d(
+    pf_maze1.ratemap.neuron_ids,
+    pf_maze2.ratemap.neuron_ids
+)
+
+print(f"Neurons present in both contexts: {len(common_neurons)}")
+
+# Compute correlation between place fields
+from scipy.stats import pearsonr
+
+for neuron_id in common_neurons:
+    idx1 = np.where(pf_maze1.ratemap.neuron_ids == neuron_id)[0][0]
+    idx2 = np.where(pf_maze2.ratemap.neuron_ids == neuron_id)[0][0]
+    
+    map1 = pf_maze1.ratemap.tuning_curves[idx1, :, :].flatten()
+    map2 = pf_maze2.ratemap.tuning_curves[idx2, :, :].flatten()
+    
+    corr, pval = pearsonr(map1, map2)
+    print(f"Neuron {neuron_id}: r={corr:.3f}, p={pval:.4f}")
+```
+
+## Advanced Usage
+
+### Custom Epochs
+
+Compute place fields for specific time periods:
+
+```python
+# Define custom epoch (e.g., first 10 minutes)
+from neuropy.core.epoch import Epoch
+import pandas as pd
+
+custom_epoch = Epoch(pd.DataFrame({
+    'start': [0],
+    'stop': [600],  # 10 minutes
+    'label': ['first_10min']
+}))
+
+# Compute place fields only during this epoch
+pf_params.computation_epochs = custom_epoch
+
+pf_custom = perform_compute_placefields(
+    sess=curr_active_pipeline.sess,
+    config=pf_params
+)
+```
+
+### Time-Binned Place Fields
+
+Analyze place field stability over time:
+
+```python
+# Compute place fields in temporal chunks
+chunk_duration = 300  # 5 minutes
+session_duration = curr_active_pipeline.sess.duration
+n_chunks = int(session_duration / chunk_duration)
+
+pf_by_time = []
+for i in range(n_chunks):
+    start_time = i * chunk_duration
+    end_time = (i + 1) * chunk_duration
+    
+    chunk_epoch = Epoch(pd.DataFrame({
+        'start': [start_time],
+        'stop': [end_time],
+        'label': [f'chunk_{i}']
+    }))
+    
+    pf_params.computation_epochs = chunk_epoch
+    pf_chunk = perform_compute_placefields(curr_active_pipeline.sess, pf_params)
+    pf_by_time.append(pf_chunk)
+
+# Compare stability across chunks
+for i in range(len(pf_by_time) - 1):
+    pf1 = pf_by_time[i]
+    pf2 = pf_by_time[i+1]
+    
+    # Correlation analysis between consecutive chunks
+    # (similar to context remapping example above)
+```
+
+### Decoder Preparation
+
+Place fields are used to build decoders:
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import ZhangReconstructionImplementation
+
+# Extract concatenated tuning curves for decoding
+neuron_IDXs, neuron_IDs, f_i, F_i, F, P_x = \
+    ZhangReconstructionImplementation.build_concatenated_F(
+        pf2D, debug_print=True
+    )
+
+# F contains flattened tuning curves ready for Bayesian decoding
+print(f"F shape: {F.shape}")  # (n_position_bins_flattened, n_neurons)
+print(f"P_x shape: {P_x.shape}")  # (n_position_bins_flattened, 1)
+
+# F and P_x are used in decoder computations
+```
+
+## Visualization
+
+### Heatmap of All Place Fields
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Sort neurons by peak location
+tuning_curves = pf1D.ratemap.tuning_curves  # (n_neurons, n_bins)
+peak_locations = np.argmax(tuning_curves, axis=1)
+sorted_indices = np.argsort(peak_locations)
+
+# Plot sorted place fields
+plt.figure(figsize=(12, 8))
+plt.imshow(tuning_curves[sorted_indices, :], 
+           aspect='auto', cmap='hot', interpolation='nearest')
+plt.colorbar(label='Firing Rate (Hz)')
+plt.xlabel('Position Bin')
+plt.ylabel('Neuron (sorted by peak)')
+plt.title('All Place Fields Sorted by Peak Location')
+plt.show()
+```
+
+### Interactive 3D Visualization
+
+```python
+# Use built-in visualization functions
+from pyphoplacecellanalysis.GUI.PyVista.InteractivePlotter.InteractivePlaceCellTuningCurvesDataExplorer import InteractivePlaceCellTuningCurvesDataExplorer
+
+# Create interactive plotter (requires PyVista)
+# This is typically done through display functions in the pipeline
+curr_active_pipeline.display(
+    'placefield', 
+    active_config_name='maze1',
+    enable_3D=True
+)
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choosing Grid Bin Size">
+    **1D tracks**: 2-5 cm bins typically work well
+    
+    **2D environments**: 2-4 cm bins balance resolution and spike count
+    
+    Larger bins increase smoothness but reduce spatial resolution.
+  </Accordion>
+  
+  <Accordion title="Speed Threshold">
+    Use `speed_thresh=10.0` cm/s to exclude stationary periods where place coding is unreliable. Lower thresholds (5 cm/s) can be used for careful analyses.
+  </Accordion>
+  
+  <Accordion title="Smoothing Parameters">
+    Smoothing sigma of 2.0-3.0 bins reduces noise while preserving field structure. Larger values over-smooth and blur fields.
+  </Accordion>
+  
+  <Accordion title="Firing Rate Threshold">
+    `frate_thresh=0.2` Hz excludes very low-firing neurons. Adjust based on recording quality and analysis needs.
+  </Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Decoders" icon="brain" href="/concepts/decoders">
+    Use place fields for Bayesian position decoding
+  </Card>
+  <Card title="Pipeline" icon="diagram-project" href="/concepts/pipeline">
+    Integrate place field computation in analysis pipeline
+  </Card>
+  <Card title="Data Loading" icon="file-import" href="/concepts/data-loading">
+    Load spike and position data for place field analysis
+  </Card>
+  <Card title="Visualization" icon="chart-line" href="/guides/visualization">
+    Advanced place field visualization techniques
+  </Card>
+</CardGroup>

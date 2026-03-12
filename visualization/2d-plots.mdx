@@ -1,0 +1,364 @@
+---
+title: 2D Plotting
+description: Create 2D visualizations with matplotlib, PyQtGraph, and Plotly
+icon: chart-area
+---
+
+pyPhoPlaceCellAnalysis provides comprehensive 2D plotting capabilities through three primary backends: **PyQtGraph** (real-time, interactive), **Matplotlib** (publication-quality), and **Plotly** (web-interactive).
+
+## PyQtGraph Plotting
+
+PyQtGraph provides high-performance interactive plotting for real-time data exploration.
+
+### Place Field Visualization
+
+Display all place fields in a grid layout with interactive controls:
+
+```python
+from pyphoplacecellanalysis.Pho2D.PyQtPlots.plot_placefields import (
+    display_all_pf_2D_pyqtgraph_binned_image_rendering
+)
+
+# Configure display
+figure_format_config = {
+    'color_map': 'viridis',
+    'color_bar_mode': None,
+    'drop_below_threshold': 0.0000001,
+    'scrollability_mode': LayoutScrollability.SCROLLABLE,
+    'brev_mode': PlotStringBrevityModeEnum.CONCISE
+}
+
+# Render place fields
+out_fig = display_all_pf_2D_pyqtgraph_binned_image_rendering(
+    active_pf_2D,
+    figure_format_config,
+    debug_print=True
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/PyQtPlots/plot_placefields.py:184`
+
+### Image Array Plotting
+
+Plot arrays of images (e.g., tuning curves):
+
+```python
+from pyphoplacecellanalysis.Pho2D.PyQtPlots.plot_placefields import pyqtplot_plot_image_array
+
+# Get tuning curves
+images = active_decoder.ratemap.normalized_tuning_curves  # (43, 63, 63)
+occupancy = active_decoder.ratemap.occupancy
+
+# Plot image array
+app, win, root_widget, plot_array, img_item_array, other_components = \
+    pyqtplot_plot_image_array(
+        active_decoder.xbin,
+        active_decoder.ybin,
+        images,
+        occupancy,
+        max_num_columns=5,
+        drop_below_threshold=0.0000001
+    )
+
+win.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/PyQtPlots/plot_placefields.py:21`
+
+<Note>
+  PyQtGraph uses a column-major axis order. Set `pg.setConfigOptions(imageAxisOrder='col-major')` for proper orientation.
+</Note>
+
+### Heatmap Visualization (PyQtGraph)
+
+```python
+from pyphoplacecellanalysis.Pho2D.matplotlib.visualize_heatmap import visualize_heatmap_pyqtgraph
+import numpy as np
+
+data = np.random.rand(20, 20)
+
+win, img = visualize_heatmap_pyqtgraph(
+    data,
+    title="Activity Heatmap",
+    show_colorbar=True,
+    show_xticks=True,
+    show_yticks=True
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/matplotlib/visualize_heatmap.py:86`
+
+## Matplotlib Plotting
+
+Matplotlib backend for publication-ready static figures.
+
+### Basic Heatmap
+
+```python
+from pyphoplacecellanalysis.Pho2D.matplotlib.visualize_heatmap import visualize_heatmap
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Create data
+data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]])
+
+# Visualize
+fig, ax, im = visualize_heatmap(
+    data,
+    title="Neural Activity Matrix",
+    show_value_labels=True,
+    show_colorbar=True,
+    show_xticks=True,
+    show_yticks=True,
+    layout='tight'
+)
+
+plt.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/matplotlib/visualize_heatmap.py:11`
+
+### Custom Axes
+
+Plot into existing matplotlib axes:
+
+```python
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+# Plot into specific axis
+fig, ax, im = visualize_heatmap(
+    data,
+    ax=axes[0, 0],
+    title="Subplot 1",
+    defer_show=True
+)
+
+plt.tight_layout()
+plt.show()
+```
+
+### Raster Plots
+
+Create spike raster plots with custom colormaps:
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.plot_data import (
+    plot_eventplot_raster_plot,
+    generate_colormap
+)
+import matplotlib.pyplot as plt
+
+# Generate colors for neurons
+num_cells = len(active_spike_list)
+cmap = generate_colormap(number_of_distinct_colors=num_cells)
+
+# Create color codes
+color_codes = [cmap(i) for i in range(num_cells)]
+
+# Plot raster
+plt.eventplot(active_spike_list, color=color_codes)
+plt.title('Spike Raster Plot')
+plt.xlabel('Time (s)')
+plt.ylabel('Neuron')
+plt.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/PhoPositionalData/plot_data.py:102`
+
+## Plotly Plotting
+
+Plotly provides interactive web-based visualizations with publication templates.
+
+### Publication Templates
+
+```python
+from pyphoplacecellanalysis.Pho2D.plotly.plotly_templates import PlotlyHelpers
+import plotly.graph_objects as go
+
+# Set publication template
+is_dark_mode, template = PlotlyHelpers.get_plotly_template(
+    is_dark_mode=False,
+    is_publication=True
+)
+
+# Create figure with template
+fig = go.Figure()
+fig.update_layout(
+    title="Neural Data Analysis",
+    xaxis_title="Time (s)",
+    yaxis_title="Firing Rate (Hz)"
+)
+
+fig.show()
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/plotly/plotly_templates.py:186`
+
+<Tabs>
+  <Tab title="Light Theme">
+    ```python
+    is_dark_mode, template = PlotlyHelpers.get_plotly_template(
+        is_dark_mode=False,
+        is_publication=True
+    )
+    # Returns: 'plotly+pho_diba_publication'
+    ```
+  </Tab>
+  
+  <Tab title="Dark Theme">
+    ```python
+    is_dark_mode, template = PlotlyHelpers.get_plotly_template(
+        is_dark_mode=True,
+        is_publication=True
+    )
+    # Returns: 'plotly_dark+pho_diba_publication'
+    ```
+  </Tab>
+</Tabs>
+
+### Custom Font Sizes
+
+The publication template provides scientifically appropriate font sizes:
+
+```python
+# Font sizes in pixels (configured for 300 DPI)
+text_sizes_px = {
+    'titles': 17.25,
+    'axes': 9.33,
+    'insets': 6.7
+}
+```
+
+## Colormap Generation
+
+Generate distinct, visually separable colors for multiple neurons:
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.plot_data import generate_colormap
+from matplotlib.colors import ListedColormap
+
+# Generate colormap for 80 neurons
+cmap = generate_colormap(number_of_distinct_colors=80)
+
+# Use in plots
+colors = [cmap(i) for i in range(num_neurons)]
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/PhoPositionalData/plot_data.py:27`
+
+<Note>
+  The `generate_colormap` function creates a saw-tooth pattern in HSV space with varying shades to maximize visual distinction between adjacent colors.
+</Note>
+
+## Stacked Epoch Slices
+
+Visualize multiple epochs in a vertically stacked layout:
+
+```python
+from pyphoplacecellanalysis.Pho2D.stacked_epoch_slices import stacked_epoch_slices_view
+
+# Get lap data
+epoch_slices = laps[['start', 'stop']].to_numpy()
+epoch_labels = [f'Lap {i}' for i in range(len(laps))]
+
+# Create stacked view
+params, plots_data, plots, ui = stacked_epoch_slices_view(
+    epoch_slices,
+    position_times_list,
+    position_traces_list,
+    epoch_labels,
+    name='laps_view'
+)
+```
+
+See: `/home/daytona/workspace/source/src/pyphoplacecellanalysis/Pho2D/stacked_epoch_slices.py:133`
+
+## Advanced Features
+
+### Time-Synchronized Plotting
+
+Create synchronized multi-panel displays:
+
+```python
+from pyphoplacecellanalysis.Pho2D.PyQtPlots.TimeSynchronizedPlotters.TimeSynchronizedPlotterBase import TimeSynchronizedPlotterBase
+
+# Extend base class for custom synchronized plotters
+class MyTimeSyncPlotter(TimeSynchronizedPlotterBase):
+    def update_plots(self, current_time):
+        # Update all plots to current time
+        pass
+```
+
+### Custom Image Bounds
+
+```python
+from pyphoplacecellanalysis.Pho2D.PyQtPlots.Extensions.pyqtgraph_helpers import pyqtplot_build_image_bounds_extent
+
+image_bounds_extent, x_range, y_range = pyqtplot_build_image_bounds_extent(
+    xbin_edges,
+    ybin_edges,
+    margin=2.0,
+    debug_print=False
+)
+```
+
+## Configuration Options
+
+<CodeGroup>
+
+```python PyQtGraph Config
+config = {
+    'color_map': pg.colormap.get('viridis', 'matplotlib'),
+    'color_bar_mode': 'each',  # or None
+    'drop_below_threshold': 0.0000001,
+    'scrollability_mode': LayoutScrollability.SCROLLABLE,
+    'wants_crosshairs': False,
+    'brev_mode': PlotStringBrevityModeEnum.CONCISE
+}
+```
+
+```python Matplotlib Config
+config = {
+    'cmap': 'viridis',
+    'aspect': 'auto',
+    'interpolation': 'nearest',
+    'vmin': 0,
+    'vmax': 1
+}
+```
+
+```python Plotly Config
+config = {
+    'template': 'plotly+pho_diba_publication',
+    'paper_bgcolor': 'white',
+    'plot_bgcolor': 'white',
+    'font_family': 'Arial'
+}
+```
+
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choose the Right Backend">
+    - **PyQtGraph**: Large datasets, real-time updates, interactive exploration
+    - **Matplotlib**: Publication figures, static plots, precise control
+    - **Plotly**: Web sharing, hover interactions, 3D surface plots
+  </Accordion>
+  
+  <Accordion title="Performance Optimization">
+    - Use `drop_below_threshold` to filter low-occupancy bins
+    - Enable scrollability for many subplots
+    - Pre-compute normalized values
+    - Use appropriate data types (float32 vs float64)
+  </Accordion>
+  
+  <Accordion title="Color Selection">
+    - Use `generate_colormap()` for neuron identification
+    - Choose perceptually uniform colormaps (viridis, plasma)
+    - Consider colorblind-friendly palettes
+  </Accordion>
+</AccordionGroup>

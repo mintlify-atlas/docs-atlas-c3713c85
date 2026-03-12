@@ -1,0 +1,186 @@
+---
+title: 'Bayesian Position Decoders'
+description: 'Core decoder classes for Bayesian position decoding from neural activity'
+---
+
+## Overview
+
+The decoder module provides implementations of Bayesian position decoders for analyzing spatial coding in place cells. These decoders reconstruct position from spike activity using placefield information.
+
+## BasePositionDecoder
+
+Stateless base decoder class that stores only the raw inputs needed for decoding.
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import BasePositionDecoder
+
+decoder = BasePositionDecoder(pf=pf1D, debug_print=False)
+```
+
+<ParamField path="pf" type="PfND" required>
+  Place field object containing tuning curves and ratemap information
+</ParamField>
+
+<ParamField path="neuron_IDXs" type="np.ndarray">
+  Indices of neurons included in the decoder (computed from pf if not provided)
+</ParamField>
+
+<ParamField path="neuron_IDs" type="np.ndarray">
+  Cell IDs (aclus) of neurons included in the decoder
+</ParamField>
+
+### Properties
+
+<ResponseField name="time_bin_size" type="float">
+  Size of decoding time bins in seconds
+</ResponseField>
+
+<ResponseField name="num_time_windows" type="int">
+  Number of time windows that have been decoded
+</ResponseField>
+
+<ResponseField name="original_position_data_shape" type="tuple">
+  Shape of the original position data (n_xbins, n_ybins) or (n_xbins,) for 1D
+</ResponseField>
+
+### Methods
+
+#### decode_specific_epochs
+
+Decode neural activity during specific time epochs.
+
+```python
+decoded_result = decoder.decode_specific_epochs(
+    spikes_df=spikes_df,
+    filter_epochs=replay_epochs,
+    decoding_time_bin_size=0.025,
+    debug_print=False
+)
+```
+
+<ParamField path="spikes_df" type="pd.DataFrame" required>
+  Spike dataframe with columns ['t', 'aclu', 'shank', ...]
+</ParamField>
+
+<ParamField path="filter_epochs" type="pd.DataFrame | Epoch" required>
+  Time epochs to decode, with 'start' and 'stop' times
+</ParamField>
+
+<ParamField path="decoding_time_bin_size" type="float" default="0.025">
+  Time bin size for decoding in seconds
+</ParamField>
+
+<ParamField path="use_single_time_bin_per_epoch" type="bool" default="False">
+  If True, decode each epoch as a single time bin
+</ParamField>
+
+<ResponseField name="result" type="DecodedFilterEpochsResult">
+  Container with decoded posteriors and most likely positions for each epoch
+</ResponseField>
+
+#### get_by_id
+
+Create a subset decoder with only specified neurons.
+
+```python
+subset_decoder = decoder.get_by_id(
+    ids=[1, 2, 5, 10],
+    defer_compute_all=False
+)
+```
+
+<ParamField path="ids" type="list | np.ndarray" required>
+  Neuron IDs (aclus) to include in subset decoder
+</ParamField>
+
+<ParamField path="defer_compute_all" type="bool" default="False">
+  If True, skip recomputation of decoder parameters (useful when building many subset decoders)
+</ParamField>
+
+<ResponseField name="subset_decoder" type="BasePositionDecoder">
+  New decoder containing only the specified neurons
+</ResponseField>
+
+## Example Usage
+
+### Basic 1D Decoding
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import BasePositionDecoder
+from neuropy.analyses.placefields import PfND
+
+# Build 1D place fields
+pf1D = PfND(spikes_df, position.linear_pos_obj)
+
+# Create decoder
+decoder = BasePositionDecoder(pf=pf1D, debug_print=False)
+
+# Decode replay epochs
+result = decoder.decode_specific_epochs(
+    spikes_df=spikes_df,
+    filter_epochs=replay_epochs,
+    decoding_time_bin_size=0.025
+)
+
+# Access decoded positions
+for epoch_idx in range(result.num_filter_epochs):
+    posterior = result.p_x_given_n_list[epoch_idx]  # (n_xbins, n_tbins)
+    positions = result.most_likely_positions_list[epoch_idx]  # (n_tbins,)
+    print(f"Epoch {epoch_idx}: {len(positions)} time bins decoded")
+```
+
+### Leave-One-Out Analysis
+
+```python
+# Create decoders with each neuron left out
+neuron_ids = decoder.neuron_IDs
+left_out_decoders = {}
+
+for aclu in neuron_ids:
+    # Get all neurons except the current one
+    subset_ids = [id for id in neuron_ids if id != aclu]
+    left_out_decoders[aclu] = decoder.get_by_id(
+        subset_ids,
+        defer_compute_all=True
+    )
+
+# Decode with each left-out decoder
+for aclu, left_out_decoder in left_out_decoders.items():
+    result = left_out_decoder.decode_specific_epochs(
+        spikes_df=spikes_df[spikes_df['aclu'] != aclu],
+        filter_epochs=epochs,
+        decoding_time_bin_size=0.025
+    )
+    # Analyze contribution of left-out neuron
+    print(f"Decoder without neuron {aclu}: {result.num_filter_epochs} epochs")
+```
+
+### Continuous Session Decoding
+
+```python
+from neuropy.core.epoch import Epoch
+
+# Create single epoch spanning entire session
+session_duration = spikes_df['t'].max() - spikes_df['t'].min()
+session_epoch = Epoch([
+    [spikes_df['t'].min(), spikes_df['t'].max()]
+])
+
+# Decode entire session
+continuous_result = decoder.decode_specific_epochs(
+    spikes_df=spikes_df,
+    filter_epochs=session_epoch,
+    decoding_time_bin_size=0.025
+)
+
+# Get single continuous posterior
+posterior = continuous_result.p_x_given_n_list[0]  # (n_xbins, n_session_tbins)
+time_centers = continuous_result.time_window_centers[0]
+print(f"Decoded {len(time_centers)} time bins over {session_duration:.1f}s")
+```
+
+## See Also
+
+- [Reconstruction Results](/api/analysis/reconstruction) - Working with decoded results
+- [Replay Scoring](/api/analysis/replay-scoring) - Evaluating replay quality
+- [Position Derivatives](/api/analysis/position-derivatives) - Computing velocity and acceleration

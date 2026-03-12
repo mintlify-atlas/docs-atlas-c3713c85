@@ -1,0 +1,353 @@
+---
+title: 'Replay Scoring'
+description: 'Heuristic algorithms for scoring replay quality from decoded positions'
+---
+
+## Overview
+
+The replay scoring module provides heuristic methods for evaluating the quality of decoded replay events. These metrics assess trajectory coherence, directionality, and sequential structure.
+
+## HeuristicScoresTuple
+
+Container for heuristic replay quality scores.
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import HeuristicScoresTuple
+
+scores = HeuristicScoresTuple(
+    longest_sequence_length=45,
+    longest_sequence_length_ratio=0.82,
+    direction_change_bin_ratio=0.15,
+    congruent_dir_bins_ratio=0.75,
+    total_congruent_direction_change=250.5,
+    total_variation=185.3,
+    integral_second_derivative=1250.8,
+    stddev_of_diff=12.5,
+    position_derivatives_df=derivatives_df
+)
+```
+
+### Fields
+
+<ResponseField name="longest_sequence_length" type="int">
+  Length of longest monotonic subsequence in decoded trajectory (number of time bins)
+</ResponseField>
+
+<ResponseField name="longest_sequence_length_ratio" type="float">
+  Ratio of longest sequence to total bins: `longest_sequence_length / total_bins`
+</ResponseField>
+
+<ResponseField name="direction_change_bin_ratio" type="float">
+  Proportion of bins where direction reverses (lower is more coherent)
+</ResponseField>
+
+<ResponseField name="congruent_dir_bins_ratio" type="float">
+  Proportion of bins moving in the dominant direction (higher is better)
+</ResponseField>
+
+<ResponseField name="total_congruent_direction_change" type="float">
+  Total distance traveled in the dominant direction (cm)
+</ResponseField>
+
+<ResponseField name="total_variation" type="float">
+  Sum of absolute position differences: $\sum |x_{t+1} - x_t|$ (cm)
+</ResponseField>
+
+<ResponseField name="integral_second_derivative" type="float">
+  Smoothness metric: $\sum (\frac{d^2x}{dt^2})^2$ (lower is smoother)
+</ResponseField>
+
+<ResponseField name="stddev_of_diff" type="float">
+  Standard deviation of position differences (cm/bin)
+</ResponseField>
+
+<ResponseField name="position_derivatives_df" type="pd.DataFrame">
+  DataFrame with columns ['t', 'x', 'vel_x', 'accel_x'] for each time bin
+</ResponseField>
+
+## SubsequencesPartitioningResult
+
+Analyzes decoded trajectories by partitioning into monotonic subsequences.
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import SubsequencesPartitioningResult
+
+partition_result = SubsequencesPartitioningResult.init_from_positions_list(
+    a_most_likely_positions_list=decoded_positions,
+    pos_bin_edges=decoder.xbin,
+    max_ignore_bins=2,
+    same_thresh=4.0,
+    max_jump_distance_cm=None
+)
+```
+
+<ParamField path="a_most_likely_positions_list" type="np.ndarray" required>
+  Decoded positions for each time bin (cm)
+</ParamField>
+
+<ParamField path="pos_bin_edges" type="np.ndarray" required>
+  Position bin edges from the decoder
+</ParamField>
+
+<ParamField path="max_ignore_bins" type="int" default="2">
+  Maximum number of bins to bridge over when merging subsequences
+</ParamField>
+
+<ParamField path="same_thresh" type="float" default="4.0">
+  Position threshold (cm) below which bins are considered stationary
+</ParamField>
+
+<ParamField path="max_jump_distance_cm" type="float">
+  Maximum allowed position jump between adjacent bins (cm)
+</ParamField>
+
+### Properties
+
+<ResponseField name="longest_sequence_length" type="int">
+  Number of bins in the longest monotonic subsequence
+</ResponseField>
+
+<ResponseField name="longest_sequence_length_ratio" type="float">
+  Ratio of longest sequence to total trajectory length
+</ResponseField>
+
+<ResponseField name="longest_sequence_subsequence" type="np.ndarray">
+  Position values of the longest monotonic subsequence
+</ResponseField>
+
+<ResponseField name="split_positions_arrays" type="list[np.ndarray]">
+  List of position arrays for each partitioned subsequence
+</ResponseField>
+
+<ResponseField name="merged_split_positions_arrays" type="list[np.ndarray]">
+  Subsequences after merging over short intrusions
+</ResponseField>
+
+<ResponseField name="subsequences_df" type="pd.DataFrame">
+  DataFrame with properties of each subsequence (length, intrusions, etc.)
+</ResponseField>
+
+### Methods
+
+#### get_longest_sequence_length
+
+Get length statistics for the longest coherent sequence.
+
+```python
+length = partition_result.get_longest_sequence_length(
+    return_ratio=True,
+    should_use_no_repeat_values=True,
+    should_ignore_intrusion_bins=True
+)
+```
+
+<ParamField path="return_ratio" type="bool" default="True">
+  If True, return ratio to total bins; if False, return absolute length
+</ParamField>
+
+<ParamField path="should_use_no_repeat_values" type="bool" default="False">
+  If True, exclude repeated/stationary positions from count
+</ParamField>
+
+<ParamField path="should_ignore_intrusion_bins" type="bool" default="True">
+  If True, exclude intrusion bins from total
+</ParamField>
+
+<ResponseField name="length" type="float | int">
+  Sequence length (ratio if return_ratio=True, otherwise bin count)
+</ResponseField>
+
+## Scoring Functions
+
+### Variation and Smoothness Metrics
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import (
+    _compute_total_variation,
+    _compute_integral_second_derivative,
+    _compute_stddev_of_diff
+)
+
+# Total variation (roughness)
+tv = _compute_total_variation(decoded_positions)
+
+# Second derivative (smoothness)
+isd = _compute_integral_second_derivative(decoded_positions, dx=1)
+
+# Position change variability  
+std = _compute_stddev_of_diff(decoded_positions)
+```
+
+<ParamField path="arr" type="np.ndarray" required>
+  Array of decoded positions
+</ParamField>
+
+<ParamField path="dx" type="float" default="1">
+  Spacing for second derivative calculation (for integral_second_derivative)
+</ParamField>
+
+<ResponseField name="metric" type="float">
+  Computed quality metric value
+</ResponseField>
+
+## Example Usage
+
+### Computing Replay Scores
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.heuristic_replay_scoring import (
+    SubsequencesPartitioningResult,
+    _compute_total_variation,
+    _compute_integral_second_derivative,
+    _compute_stddev_of_diff
+)
+
+# Get decoded positions for an epoch
+result = decoder.decode_specific_epochs(
+    spikes_df=spikes_df,
+    filter_epochs=replay_epochs,
+    decoding_time_bin_size=0.025
+)
+
+epoch_idx = 0
+positions = result.most_likely_positions_list[epoch_idx]
+
+# Analyze trajectory structure
+partition = SubsequencesPartitioningResult.init_from_positions_list(
+    a_most_likely_positions_list=positions,
+    pos_bin_edges=decoder.xbin,
+    max_ignore_bins=2,
+    same_thresh=4.0
+)
+
+# Get sequence metrics
+longest_seq_ratio = partition.longest_sequence_length_ratio
+print(f"Longest sequence: {longest_seq_ratio:.2%} of trajectory")
+print(f"Number of subsequences: {len(partition.split_positions_arrays)}")
+
+# Compute variation metrics
+total_var = _compute_total_variation(positions)
+smooth = _compute_integral_second_derivative(positions)
+std_diff = _compute_stddev_of_diff(positions)
+
+print(f"\nTrajectory Quality:")
+print(f"  Total variation: {total_var:.1f} cm")
+print(f"  Smoothness (ISD): {smooth:.1f}")
+print(f"  Position change std: {std_diff:.1f} cm/bin")
+```
+
+### Identifying High-Quality Replays
+
+```python
+import pandas as pd
+import numpy as np
+
+# Score all epochs
+scores = []
+for i in range(result.num_filter_epochs):
+    positions = result.most_likely_positions_list[i]
+    
+    # Skip very short epochs
+    if len(positions) < 5:
+        continue
+        
+    # Partition analysis
+    partition = SubsequencesPartitioningResult.init_from_positions_list(
+        a_most_likely_positions_list=positions,
+        pos_bin_edges=decoder.xbin,
+        max_ignore_bins=2,
+        same_thresh=4.0
+    )
+    
+    # Compute scores
+    scores.append({
+        'epoch_idx': i,
+        'n_bins': len(positions),
+        'longest_seq_ratio': partition.longest_sequence_length_ratio,
+        'total_variation': _compute_total_variation(positions),
+        'smoothness': _compute_integral_second_derivative(positions),
+        'direction_changes': len(partition.split_positions_arrays) - 1,
+    })
+
+scores_df = pd.DataFrame(scores)
+
+# Define quality criteria
+high_quality = scores_df[
+    (scores_df['longest_seq_ratio'] > 0.7) &  # At least 70% coherent
+    (scores_df['direction_changes'] <= 2) &    # Max 2 direction changes
+    (scores_df['smoothness'] < 2000)           # Smooth trajectory
+]
+
+print(f"\nHigh-quality replays: {len(high_quality)}/{len(scores_df)}")
+print(high_quality[['epoch_idx', 'longest_seq_ratio', 'direction_changes']].head())
+```
+
+### Trajectory Visualization with Scores
+
+```python
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+axes = axes.flatten()
+
+# Plot top 6 replays by sequence ratio
+top_replays = scores_df.nlargest(6, 'longest_seq_ratio')
+
+for ax, (_, row) in zip(axes, top_replays.iterrows()):
+    epoch_idx = int(row['epoch_idx'])
+    positions = result.most_likely_positions_list[epoch_idx]
+    time_centers = result.time_window_centers[epoch_idx]
+    
+    # Plot trajectory
+    ax.plot(time_centers, positions, 'o-', markersize=4, alpha=0.7)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Position (cm)')
+    ax.set_title(
+        f"Epoch {epoch_idx}\n"
+        f"Sequence: {row['longest_seq_ratio']:.1%}, "
+        f"Smooth: {row['smoothness']:.0f}"
+    )
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
+### Exporting Scored Epochs
+
+```python
+# Merge scores with epoch metadata
+epochs_with_scores = result.filter_epochs.copy()
+epochs_with_scores = epochs_with_scores.merge(
+    scores_df,
+    left_index=True,
+    right_on='epoch_idx',
+    how='left'
+)
+
+# Add quality classification
+epochs_with_scores['quality'] = 'low'
+epochs_with_scores.loc[
+    (epochs_with_scores['longest_seq_ratio'] > 0.7) &
+    (epochs_with_scores['direction_changes'] <= 2),
+    'quality'
+] = 'medium'
+epochs_with_scores.loc[
+    (epochs_with_scores['longest_seq_ratio'] > 0.85) &
+    (epochs_with_scores['direction_changes'] <= 1) &
+    (epochs_with_scores['smoothness'] < 1000),
+    'quality'
+] = 'high'
+
+print("\nQuality Distribution:")
+print(epochs_with_scores['quality'].value_counts())
+
+# Save annotated epochs
+epochs_with_scores.to_csv('replay_epochs_scored.csv', index=False)
+```
+
+## See Also
+
+- [Reconstruction Results](/api/analysis/reconstruction) - Decoded position containers
+- [Position Derivatives](/api/analysis/position-derivatives) - Velocity/acceleration computation
+- [Bayesian Decoders](/api/analysis/decoders) - Core decoder implementations

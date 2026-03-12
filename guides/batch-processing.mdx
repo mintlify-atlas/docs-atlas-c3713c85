@@ -1,0 +1,482 @@
+---
+title: 'Batch Processing'
+description: 'Efficiently process multiple recording sessions in parallel'
+icon: 'layer-group'
+---
+
+## Overview
+
+Batch processing enables automated analysis of multiple recording sessions. The framework provides tools for parallel execution, progress tracking, error handling, and result aggregation across sessions.
+
+## Setting Up Batch Processing
+
+<Steps>
+  <Step title="Define Session Contexts">
+    Create identifying contexts for each session:
+
+    ```python
+    from neuropy.utils.result_context import IdentifyingContext
+    from pathlib import Path
+
+    # Define session contexts
+    session_contexts = [
+        IdentifyingContext(
+            format_name='kdiba',
+            animal='gor01',
+            exper_name='one',
+            session_name='2006-6-07_11-26-53'
+        ),
+        IdentifyingContext(
+            format_name='kdiba',
+            animal='gor01',
+            exper_name='two',
+            session_name='2006-6-08_14-26-15'
+        ),
+        # Add more sessions...
+    ]
+
+    print(f'Configured {len(session_contexts)} sessions for batch processing')
+    ```
+  </Step>
+
+  <Step title="Build Session Paths">
+    Convert contexts to concrete file paths:
+
+    ```python
+    from pyphoplacecellanalysis.General.Batch.runBatch import ConcreteSessionFolder
+    from neuropy.core.session.Formats.Specific.KDibaOldDataSessionFormat import KDibaOldDataSessionFormatRegisteredClass
+
+    # Define data root directory
+    known_data_session_type_properties_dict = {
+        'basedirs': [Path(r'/path/to/data')],
+        'type': KDibaOldDataSessionFormatRegisteredClass
+    }
+
+    # Build concrete session folders
+    session_folders = []
+    for context in session_contexts:
+        session_path = known_data_session_type_properties_dict['basedirs'][0] / \
+                      context.animal / context.exper_name / context.session_name
+        
+        if session_path.exists():
+            session_folders.append(
+                ConcreteSessionFolder(context=context, path=session_path)
+            )
+        else:
+            print(f'Warning: Path not found for {context.get_description()}')
+
+    print(f'Found {len(session_folders)} valid session directories')
+    ```
+  </Step>
+
+  <Step title="Configure Processing Options">
+    Set up batch computation parameters:
+
+    ```python
+    from pyphoplacecellanalysis.General.Batch.BatchJobCompletion.BatchCompletionHandler import (
+        BatchComputationProcessOptions,
+        SavingOptions
+    )
+
+    # Configure processing options
+    batch_options = BatchComputationProcessOptions(
+        fail_on_exception=False,  # Continue despite errors
+        skip_extended_batch_computations=False,
+        should_load_without_computing=False,
+        use_multiprocessing=True,  # Enable parallel processing
+        max_num_workers=4  # Number of parallel workers
+    )
+
+    # Configure saving options
+    saving_options = SavingOptions(
+        should_save_pipeline=True,
+        should_save_global_computations=True,
+        should_save_h5=False
+    )
+    ```
+  </Step>
+</Steps>
+
+## Running Batch Analysis
+
+### Sequential Processing
+
+Process sessions one at a time:
+
+```python
+from pyphoplacecellanalysis.General.Batch.NonInteractiveProcessing import batch_load_session
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import PipelineSavingScheme
+
+results = []
+errors = []
+
+for session_folder in session_folders:
+    print(f"\nProcessing: {session_folder.context.get_description()}")
+    
+    try:
+        # Load and compute
+        pipeline = batch_load_session(
+            session_folder.context,
+            known_data_session_type_properties_dict=known_data_session_type_properties_dict,
+            should_load_without_computing=False
+        )
+        
+        # Perform computations
+        pipeline.perform_computations()
+        pipeline.perform_global_computations()
+        
+        # Save results
+        if saving_options.should_save_pipeline:
+            pipeline.save_pipeline(
+                saving_mode=PipelineSavingScheme.TEMP_THEN_OVERWRITE
+            )
+        
+        results.append({
+            'context': session_folder.context,
+            'pipeline': pipeline,
+            'status': 'success'
+        })
+        
+        print(f"  ✓ Completed successfully")
+        
+    except Exception as e:
+        print(f"  ✗ Error: {str(e)}")
+        errors.append({
+            'context': session_folder.context,
+            'error': str(e)
+        })
+        
+        if batch_options.fail_on_exception:
+            raise
+
+print(f"\nBatch processing complete:")
+print(f"  Successful: {len(results)}")
+print(f"  Failed: {len(errors)}")
+```
+
+### Parallel Processing
+
+<Tip>
+Use multiprocessing for faster batch analysis:
+</Tip>
+
+```python
+import multiprocessing
+from functools import partial
+
+def process_single_session(session_folder, data_properties, batch_opts, save_opts):
+    """Process a single session - designed for multiprocessing."""
+    try:
+        # Load session
+        pipeline = batch_load_session(
+            session_folder.context,
+            known_data_session_type_properties_dict=data_properties,
+            should_load_without_computing=False
+        )
+        
+        # Compute
+        pipeline.perform_computations()
+        pipeline.perform_global_computations()
+        
+        # Save
+        if save_opts.should_save_pipeline:
+            pipeline.save_pipeline()
+        
+        return {
+            'context': session_folder.context.get_description(),
+            'status': 'success',
+            'n_neurons': pipeline.sess.n_neurons,
+            'duration': pipeline.sess.duration
+        }
+        
+    except Exception as e:
+        return {
+            'context': session_folder.context.get_description(),
+            'status': 'failed',
+            'error': str(e)
+        }
+
+# Create partial function with fixed arguments
+process_func = partial(
+    process_single_session,
+    data_properties=known_data_session_type_properties_dict,
+    batch_opts=batch_options,
+    save_opts=saving_options
+)
+
+# Run in parallel
+with multiprocessing.Pool(processes=batch_options.max_num_workers) as pool:
+    results = pool.map(process_func, session_folders)
+
+# Analyze results
+successes = [r for r in results if r['status'] == 'success']
+failures = [r for r in results if r['status'] == 'failed']
+
+print(f"\nParallel batch processing complete:")
+print(f"  Successful: {len(successes)}")
+print(f"  Failed: {len(failures)}")
+
+if failures:
+    print("\nFailed sessions:")
+    for f in failures:
+        print(f"  - {f['context']}: {f['error']}")
+```
+
+## Batch Result Management
+
+### Aggregate Results
+
+```python
+import pandas as pd
+import numpy as np
+
+# Collect metrics from all successful sessions
+session_metrics = []
+
+for result in results:
+    if result['status'] == 'success':
+        pipeline = result['pipeline']
+        
+        # Extract session-level metrics
+        metrics = {
+            'session': result['context'].get_description(),
+            'n_neurons': pipeline.sess.n_neurons,
+            'duration_sec': pipeline.sess.duration,
+            'n_placefields': None,
+            'mean_firing_rate': None
+        }
+        
+        # Get placefield statistics
+        if 'maze1' in pipeline.computation_results:
+            comp_result = pipeline.computation_results['maze1']
+            if 'pf1D' in comp_result.computed_data:
+                pf1D = comp_result.computed_data['pf1D']
+                metrics['n_placefields'] = pf1D.ratemap.n_neurons
+                
+                # Mean peak firing rate across cells
+                peak_rates = np.max(pf1D.ratemap.tuning_curves, axis=1)
+                metrics['mean_firing_rate'] = np.mean(peak_rates)
+        
+        session_metrics.append(metrics)
+
+# Create summary DataFrame
+metrics_df = pd.DataFrame(session_metrics)
+print("\nSession Summary:")
+print(metrics_df)
+
+# Save summary
+metrics_df.to_csv('output/batch_session_metrics.csv', index=False)
+```
+
+### Backup Output Files
+
+```python
+from pyphoplacecellanalysis.General.Batch.runBatch import BackupMethods
+
+# Define backup directory
+backup_dir = Path('/path/to/backup/2024-01-15')
+backup_dir.mkdir(parents=True, exist_ok=True)
+
+# Build copy dictionary for backup
+copy_dict = ConcreteSessionFolder.build_backup_copydict(
+    good_session_concrete_folders=session_folders,
+    backup_mode=BackupMethods.CommonTargetDirectory,
+    target_dir=backup_dir,
+    only_include_file_types=['local_pkl', 'global_pkl', 'h5']
+)
+
+print(f"Prepared to backup {len(copy_dict)} files")
+
+# Perform backup
+from pyphocorehelpers.Filesystem.path_helpers import copy_movedict
+moved_files = copy_movedict(copy_dict)
+print(f"Backed up {len(moved_files)} files to {backup_dir}")
+```
+
+## Batch Logging
+
+### Session-Specific Logging
+
+```python
+from pyphoplacecellanalysis.General.Batch.runBatch import build_batch_task_logger
+import logging
+
+# Create log directory
+log_dir = Path('logs/batch_processing')
+log_dir.mkdir(parents=True, exist_ok=True)
+
+# Process with logging
+for session_folder in session_folders:
+    # Create session-specific logger
+    logger = build_batch_task_logger(
+        session_context=session_folder.context,
+        file_logging_dir=log_dir,
+        include_curr_time_str=True
+    )
+    
+    logger.info(f"Starting processing for {session_folder.context.get_description()}")
+    
+    try:
+        pipeline = batch_load_session(
+            session_folder.context,
+            known_data_session_type_properties_dict=known_data_session_type_properties_dict
+        )
+        logger.info(f"Session loaded: {pipeline.sess.n_neurons} neurons")
+        
+        pipeline.perform_computations()
+        logger.info("Computations completed")
+        
+        pipeline.save_pipeline()
+        logger.info("Pipeline saved")
+        
+    except Exception as e:
+        logger.error(f"Processing failed: {str(e)}", exc_info=True)
+        raise
+```
+
+## Custom Batch Computations
+
+### Define Custom Analysis Function
+
+```python
+def custom_batch_analysis(pipeline, session_context):
+    """Custom analysis to run on each session."""
+    results = {
+        'session': session_context.get_description(),
+        'metrics': {}
+    }
+    
+    # Example: Compute replay statistics
+    if 'maze1' in pipeline.computation_results:
+        pf1D = pipeline.computation_results['maze1'].computed_data.get('pf1D')
+        
+        if pf1D is not None:
+            # Your custom analysis here
+            results['metrics']['n_neurons'] = pf1D.ratemap.n_neurons
+            results['metrics']['track_length'] = pf1D.config.grid_bin[0] * len(pf1D.ratemap.xbin_centers)
+    
+    return results
+
+# Apply to all sessions
+custom_results = []
+
+for result in results:
+    if result['status'] == 'success':
+        custom_res = custom_batch_analysis(
+            result['pipeline'],
+            result['context']
+        )
+        custom_results.append(custom_res)
+
+custom_df = pd.DataFrame(custom_results)
+print(custom_df)
+```
+
+## Across-Session Analysis
+
+```python
+from pyphoplacecellanalysis.SpecificResults.AcrossSessionResults import AcrossSessionsResults
+
+# Aggregate data across sessions
+across_sessions = AcrossSessionsResults()
+
+for result in results:
+    if result['status'] == 'success':
+        pipeline = result['pipeline']
+        context = result['context']
+        
+        # Add session data
+        across_sessions.add_session(
+            context=context,
+            global_computation_results=pipeline.global_computation_results
+        )
+
+# Perform across-session computations
+across_sessions.compute_across_session_metrics()
+
+# Save aggregated results
+across_sessions.save('output/across_sessions_results.pkl')
+```
+
+## Error Recovery and Checkpointing
+
+```python
+import pickle
+from pathlib import Path
+
+# Checkpoint file
+checkpoint_file = Path('batch_checkpoint.pkl')
+
+# Load previous progress if exists
+if checkpoint_file.exists():
+    with open(checkpoint_file, 'rb') as f:
+        completed_sessions = pickle.load(f)
+    print(f"Resuming from checkpoint: {len(completed_sessions)} sessions completed")
+else:
+    completed_sessions = []
+
+# Process remaining sessions
+for session_folder in session_folders:
+    session_desc = session_folder.context.get_description()
+    
+    # Skip if already processed
+    if session_desc in completed_sessions:
+        print(f"Skipping {session_desc} (already completed)")
+        continue
+    
+    try:
+        # Process session
+        pipeline = batch_load_session(
+            session_folder.context,
+            known_data_session_type_properties_dict=known_data_session_type_properties_dict
+        )
+        pipeline.perform_computations()
+        pipeline.save_pipeline()
+        
+        # Mark as completed
+        completed_sessions.append(session_desc)
+        
+        # Save checkpoint
+        with open(checkpoint_file, 'wb') as f:
+            pickle.dump(completed_sessions, f)
+            
+    except Exception as e:
+        print(f"Error processing {session_desc}: {str(e)}")
+        continue
+
+print(f"\nBatch processing complete: {len(completed_sessions)} sessions")
+
+# Clean up checkpoint file
+if checkpoint_file.exists():
+    checkpoint_file.unlink()
+```
+
+<Warning>
+**Memory Management**
+
+For large batches:
+- Limit number of parallel workers based on available RAM
+- Clear large variables after each session
+- Use `del pipeline` and `gc.collect()` between sessions
+- Monitor memory usage with system tools
+</Warning>
+
+<Tip>
+**Performance Tips**
+- Use SSDs for faster I/O
+- Process smaller batches if memory-constrained  
+- Save intermediate results frequently
+- Use logging to track progress and debug issues
+- Test on a small subset before running full batch
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Data Import" icon="file-import" href="/guides/data-import">
+    Review data import for batch processing
+  </Card>
+  <Card title="Visualization" icon="chart-line" href="/guides/visualization">
+    Visualize batch results
+  </Card>
+</CardGroup>

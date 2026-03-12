@@ -1,0 +1,274 @@
+---
+title: 'Running the Pipeline'
+description: 'Execute the complete analysis pipeline from data loading to computation'
+icon: 'play'
+---
+
+## Overview
+
+The `NeuropyPipeline` provides a comprehensive framework for analyzing neural data. It handles data loading, filtering, computation stages, and visualization in a structured workflow.
+
+## Pipeline Initialization
+
+<Steps>
+  <Step title="Create Pipeline Instance">
+    Initialize the pipeline with your session directory:
+
+    ```python
+    from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+    from pathlib import Path
+
+    # Define session path
+    basedir = Path(r'/path/to/data/kdiba/gor01/one/2006-6-07_11-26-53')
+
+    # Initialize pipeline
+    curr_active_pipeline = NeuropyPipeline(
+        basedir=basedir,
+        session_name='2006-6-07_11-26-53'
+    )
+
+    print(f'Pipeline initialized for: {curr_active_pipeline.session_name}')
+    ```
+  </Step>
+
+  <Step title="Load Session Data">
+    Load the neural and behavioral data:
+
+    ```python
+    # Load data from disk
+    curr_active_pipeline.load_data()
+
+    # Access the loaded session
+    sess = curr_active_pipeline.sess
+    print(f'Session duration: {sess.duration:.2f} seconds')
+    print(f'Number of neurons: {sess.n_neurons}')
+    print(f'Sampling rate: {sess.recinfo.dat_sampling_rate} Hz')
+    ```
+  </Step>
+
+  <Step title="Filter Session">
+    Apply filtering to select specific time periods or neurons:
+
+    ```python
+    # Filter session data
+    curr_active_pipeline.filter_sessions()
+
+    # Access filtered sessions
+    filtered_sess = curr_active_pipeline.filtered_sessions
+    print(f'Available filtered sessions: {list(filtered_sess.keys())}')
+    ```
+  </Step>
+</Steps>
+
+## Running Computations
+
+The pipeline uses a staged computation system. Each computation stage builds on previous results.
+
+### Basic Computation
+
+```python
+# Perform all default computations
+curr_active_pipeline.perform_computations()
+
+# Check computation results
+computation_results = curr_active_pipeline.computation_results
+print(f'Computed results: {list(computation_results.keys())}')
+```
+
+### Stage-by-Stage Computation
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.Stages.Computation import ComputedPipelineStage
+
+# Stage 1: Compute placefields
+curr_active_pipeline.perform_specific_computation(
+    computation_functions_name_includelist=['pfdt_computation'],
+    enabled_filter_names=None  # None means all filters
+)
+
+# Access placefield results
+for filter_name, result in curr_active_pipeline.computation_results.items():
+    if 'pf1D' in result.computed_data:
+        pf1D = result.computed_data['pf1D']
+        print(f'{filter_name}: {pf1D.ratemap.n_neurons} neurons')
+
+# Stage 2: Compute firing rate trends  
+curr_active_pipeline.perform_specific_computation(
+    computation_functions_name_includelist=['firing_rate_trends']
+)
+
+# Stage 3: Compute position decoding
+curr_active_pipeline.perform_specific_computation(
+    computation_functions_name_includelist=['merged_directional_placefields']
+)
+```
+
+## Accessing Results
+
+<CodeGroup>
+```python Placefields
+# Access 1D placefields
+pf1D = curr_active_pipeline.computation_results['maze1'].computed_data['pf1D']
+
+# Get ratemap properties
+print(f'Spatial bins: {pf1D.ratemap.xbin_centers}')
+print(f'Tuning curves shape: {pf1D.ratemap.tuning_curves.shape}')
+print(f'Occupancy shape: {pf1D.occupancy.shape}')
+
+# Access specific neuron
+neuron_id = pf1D.cell_ids[0]
+tuning_curve = pf1D.ratemap.tuning_curves[0, :]
+```
+
+```python Spikes
+# Access spike data
+spikes_df = sess.spikes_df
+
+# Get spikes for specific neuron
+neuron_spikes = spikes_df[spikes_df['aclu'] == neuron_id]
+print(f'Neuron {neuron_id}: {len(neuron_spikes)} spikes')
+
+# Spike times
+spike_times = neuron_spikes['t_rel_seconds'].values
+```
+
+```python Position
+# Access position data
+position = sess.position
+
+print(f'X range: [{position.x.min():.2f}, {position.x.max():.2f}]')
+print(f'Y range: [{position.y.min():.2f}, {position.y.max():.2f}]')
+print(f'Speed range: [{position.speed.min():.2f}, {position.speed.max():.2f}] cm/s')
+```
+</CodeGroup>
+
+## Global Computations
+
+Global computations analyze across multiple filtered sessions:
+
+```python
+# Perform global computations
+curr_active_pipeline.perform_global_computations()
+
+# Access global results
+global_computation_results = curr_active_pipeline.global_computation_results
+
+# Example: Access directional merged decoders
+if 'DirectionalMergedDecoders' in global_computation_results.computed_data:
+    decoder_results = global_computation_results.computed_data['DirectionalMergedDecoders']
+    print(f'Long LR decoder: {decoder_results.pf1D_Decoder_dict["long_LR"]}')
+    print(f'Long RL decoder: {decoder_results.pf1D_Decoder_dict["long_RL"]}')
+```
+
+## Saving Pipeline State
+
+<Tip>
+Regularly save your pipeline to preserve computation results:
+</Tip>
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import PipelineSavingScheme
+
+# Save pipeline with default settings
+curr_active_pipeline.save_pipeline(
+    saving_mode=PipelineSavingScheme.TEMP_THEN_OVERWRITE
+)
+
+# Save global computation results separately
+curr_active_pipeline.save_global_computation_results()
+
+# Export to HDF5 format
+output_path, error = curr_active_pipeline.export_pipeline_to_h5()
+if error is None:
+    print(f'Pipeline exported to: {output_path}')
+```
+
+## Loading Saved Pipeline
+
+```python
+# Load previously saved pipeline
+loaded_pipeline = NeuropyPipeline.load_pipeline(
+    basedir=basedir,
+    session_name='2006-6-07_11-26-53'
+)
+
+# Verify loaded data
+print(f'Pipeline loaded: {loaded_pipeline.session_name}')
+print(f'Computed results: {list(loaded_pipeline.computation_results.keys())}')
+```
+
+## Pipeline Configuration
+
+### Custom Computation Parameters
+
+```python
+from neuropy.analyses.placefields import PlacefieldComputationParameters
+
+# Create custom placefield parameters
+custom_pf_params = PlacefieldComputationParameters(
+    speed_thresh=10.0,  # cm/s minimum speed
+    grid_bin=(5.0, 5.0),  # 5cm spatial bins
+    smooth=(2.0, 2.0),  # 2cm smoothing
+    frate_thresh=0.2  # 0.2 Hz minimum firing rate
+)
+
+# Use in pipeline
+curr_active_pipeline.perform_specific_computation(
+    computation_functions_name_includelist=['pfdt_computation'],
+    computation_kwargs_list=[{'computation_config': custom_pf_params}]
+)
+```
+
+## Complete Workflow Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.NeuropyPipeline import NeuropyPipeline
+from pathlib import Path
+
+# Initialize and run complete pipeline
+basedir = Path(r'/path/to/data/session')
+pipeline = NeuropyPipeline(basedir=basedir, session_name='session_name')
+
+# Load data
+print('Loading data...')
+pipeline.load_data()
+
+# Filter sessions
+print('Filtering sessions...')
+pipeline.filter_sessions()
+
+# Compute placefields and rates
+print('Computing placefields...')
+pipeline.perform_specific_computation(
+    computation_functions_name_includelist=['pfdt_computation']
+)
+
+# Perform global computations
+print('Running global computations...')
+pipeline.perform_global_computations()
+
+# Save results
+print('Saving pipeline...')
+pipeline.save_pipeline()
+
+print('Pipeline complete!')
+print(f'Results available for: {list(pipeline.computation_results.keys())}')
+```
+
+<Warning>
+Large datasets may require significant memory. Consider:
+- Processing sessions individually
+- Using batch processing for multiple sessions
+- Saving intermediate results frequently
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Bayesian Decoding" icon="brain" href="/guides/bayesian-decoding">
+    Decode position from neural activity
+  </Card>
+  <Card title="Visualization" icon="chart-line" href="/guides/visualization">
+    Visualize pipeline results
+  </Card>
+</CardGroup>

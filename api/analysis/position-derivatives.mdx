@@ -1,0 +1,352 @@
+---
+title: 'Position Derivatives'
+description: 'Computing velocity and acceleration from decoded positions'
+---
+
+## Overview
+
+The position derivatives module provides functions for computing instantaneous velocity and acceleration from decoded position trajectories using smooth spline interpolation.
+
+## Core Functions
+
+### _compute_pos_derivs
+
+Compute position, velocity, and acceleration derivatives from decoded positions.
+
+```python
+from pyphoplacecellanalysis.Analysis.position_derivatives import _compute_pos_derivs
+
+derivatives_df = _compute_pos_derivs(
+    time_window_centers=time_centers,
+    position=decoded_positions,
+    decoding_time_bin_size=0.025,
+    debug_print=False
+)
+```
+
+<ParamField path="time_window_centers" type="np.ndarray" required>
+  Time bin centers (seconds)
+</ParamField>
+
+<ParamField path="position" type="np.ndarray" required>
+  Decoded positions for each time bin (cm)
+</ParamField>
+
+<ParamField path="decoding_time_bin_size" type="float">
+  Time bin size in seconds (optional, used for context)
+</ParamField>
+
+<ParamField path="debug_print" type="bool" default="False">
+  If True, print intermediate values
+</ParamField>
+
+<ResponseField name="derivatives_df" type="pd.DataFrame">
+  DataFrame with columns:
+  - `t`: Time centers (s)
+  - `x`: Position (cm)  
+  - `vel_x`: Instantaneous velocity (cm/s)
+  - `accel_x`: Instantaneous acceleration (cm/s²)
+</ResponseField>
+
+### robust_velocity_and_acceleration
+
+Compute smooth velocity and acceleration using spline interpolation.
+
+```python
+from pyphoplacecellanalysis.Analysis.position_derivatives import robust_velocity_and_acceleration
+
+velocity, acceleration = robust_velocity_and_acceleration(
+    t=time_array,
+    x=position_array
+)
+```
+
+<ParamField path="t" type="np.ndarray" required>
+  Time points
+</ParamField>
+
+<ParamField path="x" type="np.ndarray" required>
+  Position values corresponding to time points
+</ParamField>
+
+<ResponseField name="velocity" type="np.ndarray">
+  Instantaneous velocity at each time point (first derivative of spline)
+</ResponseField>
+
+<ResponseField name="acceleration" type="np.ndarray">
+  Instantaneous acceleration at each time point (second derivative of spline)
+</ResponseField>
+
+## Visualization Functions
+
+### debug_plot_position_and_derivatives_figure
+
+Create matplotlib figure showing position, velocity, and acceleration.
+
+```python
+from pyphoplacecellanalysis.Analysis.position_derivatives import debug_plot_position_and_derivatives_figure
+
+fig, axs = debug_plot_position_and_derivatives_figure(
+    new_measured_pos_df=measured_df,
+    all_epochs_position_derivatives_df_dict={
+        'decoded_long': long_derivatives_df,
+        'decoded_short': short_derivatives_df
+    },
+    enable_debug_plot=True
+)
+plt.show()
+```
+
+<ParamField path="new_measured_pos_df" type="pd.DataFrame" required>
+  Measured position DataFrame with columns ['t', 'x', 'vel_x', 'accel_x']
+</ParamField>
+
+<ParamField path="all_epochs_position_derivatives_df_dict" type="dict" required>
+  Dictionary mapping labels to decoded position DataFrames
+</ParamField>
+
+<ParamField path="enable_debug_plot" type="bool" default="True">
+  Whether to create the plot
+</ParamField>
+
+<ResponseField name="fig" type="matplotlib.Figure">
+  Figure object with 3 vertically stacked subplots
+</ResponseField>
+
+<ResponseField name="axs" type="list[matplotlib.Axes]">
+  List of 3 axes objects for [position, velocity, acceleration]
+</ResponseField>
+
+## PositionDerivativesContainer
+
+Container class for storing position derivatives with physics-based properties.
+
+```python
+from pyphoplacecellanalysis.Analysis.position_derivatives import PositionDerivativesContainer
+
+container = PositionDerivativesContainer(
+    pos=decoded_positions,
+    mass=1.0,
+    should_use_prepending_method=True
+)
+
+# Access computed properties
+print(f"Total kinetic energy: {container.total_energy:.2f}")
+print(f"Total applied force: {container.total_applied_force:.2f}")
+```
+
+<ParamField path="pos" type="np.ndarray" required>
+  Position values
+</ParamField>
+
+<ParamField path="mass" type="float" default="1.0">
+  Mass for kinetic energy calculation
+</ParamField>
+
+### Properties
+
+<ResponseField name="vel" type="np.ndarray">
+  Computed velocity from position (automatically calculated)
+</ResponseField>
+
+<ResponseField name="accel" type="np.ndarray">
+  Computed acceleration from velocity (automatically calculated)
+</ResponseField>
+
+<ResponseField name="kinetic_energy" type="np.ndarray">
+  Kinetic energy at each time point: $KE = \frac{1}{2}mv^2$
+</ResponseField>
+
+<ResponseField name="total_energy" type="float">
+  Sum of kinetic energy over trajectory
+</ResponseField>
+
+<ResponseField name="applied_forces" type="np.ndarray">
+  Forces required at each time point: $F = ma$
+</ResponseField>
+
+<ResponseField name="total_applied_force" type="float">
+  Sum of applied forces over trajectory
+</ResponseField>
+
+## Example Usage
+
+### Computing Derivatives for Decoded Replays
+
+```python
+from pyphoplacecellanalysis.Analysis.position_derivatives import _compute_pos_derivs
+import numpy as np
+import pandas as pd
+
+# Decode replay epochs
+result = decoder.decode_specific_epochs(
+    spikes_df=spikes_df,
+    filter_epochs=replay_epochs,
+    decoding_time_bin_size=0.025
+)
+
+# Compute derivatives for each epoch
+all_derivatives = []
+for i in range(result.num_filter_epochs):
+    positions = result.most_likely_positions_list[i]
+    time_centers = result.time_window_centers[i]
+    
+    # Compute derivatives
+    deriv_df = _compute_pos_derivs(
+        time_window_centers=time_centers,
+        position=positions,
+        decoding_time_bin_size=result.decoding_time_bin_size
+    )
+    
+    # Add epoch metadata
+    deriv_df['epoch_idx'] = i
+    deriv_df['epoch_duration'] = result.filter_epochs.iloc[i]['duration']
+    
+    all_derivatives.append(deriv_df)
+
+# Combine all epochs
+full_derivatives_df = pd.concat(all_derivatives, ignore_index=True)
+
+print("\nVelocity Statistics:")
+print(f"Mean speed: {np.abs(full_derivatives_df['vel_x']).mean():.1f} cm/s")
+print(f"Max speed: {np.abs(full_derivatives_df['vel_x']).max():.1f} cm/s")
+print(f"Mean |accel|: {np.abs(full_derivatives_df['accel_x']).mean():.1f} cm/s²")
+```
+
+### Comparing Measured vs Decoded Movement
+
+```python
+from pyphoplacecellanalysis.Analysis.position_derivatives import _compute_pos_derivs
+import matplotlib.pyplot as plt
+
+# Get measured positions during replay
+replay_start = replay_epochs.iloc[0]['start']
+replay_stop = replay_epochs.iloc[0]['stop']
+
+measured_during_replay = position_df[
+    (position_df['t'] >= replay_start) &
+    (position_df['t'] <= replay_stop)
+]
+
+# Compute measured derivatives
+measured_deriv = _compute_pos_derivs(
+    time_window_centers=measured_during_replay['t'].values,
+    position=measured_during_replay['x'].values
+)
+
+# Get decoded derivatives
+decoded_positions = result.most_likely_positions_list[0]
+decoded_time = result.time_window_centers[0]
+
+decoded_deriv = _compute_pos_derivs(
+    time_window_centers=decoded_time,
+    position=decoded_positions
+)
+
+# Plot comparison
+fig, axes = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+
+axes[0].plot(measured_deriv['t'], measured_deriv['x'], 
+             'k.', alpha=0.3, label='Measured')
+axes[0].plot(decoded_deriv['t'], decoded_deriv['x'],
+             'r-', linewidth=2, label='Decoded')
+axes[0].set_ylabel('Position (cm)')
+axes[0].legend()
+
+axes[1].plot(measured_deriv['t'], measured_deriv['vel_x'], 'k.', alpha=0.3)
+axes[1].plot(decoded_deriv['t'], decoded_deriv['vel_x'], 'r-', linewidth=2)
+axes[1].set_ylabel('Velocity (cm/s)')
+
+axes[2].plot(measured_deriv['t'], measured_deriv['accel_x'], 'k.', alpha=0.3)
+axes[2].plot(decoded_deriv['t'], decoded_deriv['accel_x'], 'r-', linewidth=2)
+axes[2].set_ylabel('Accel (cm/s²)')
+axes[2].set_xlabel('Time (s)')
+
+plt.suptitle('Measured vs Decoded Movement Profiles')
+plt.tight_layout()
+plt.show()
+```
+
+### Filtering by Velocity Criteria
+
+```python
+# Identify high-velocity replay events
+velocity_threshold = 100  # cm/s
+
+high_velocity_epochs = []
+for i in range(result.num_filter_epochs):
+    deriv_df = _compute_pos_derivs(
+        time_window_centers=result.time_window_centers[i],
+        position=result.most_likely_positions_list[i]
+    )
+    
+    max_speed = np.abs(deriv_df['vel_x']).max()
+    mean_speed = np.abs(deriv_df['vel_x']).mean()
+    
+    if mean_speed > velocity_threshold:
+        high_velocity_epochs.append({
+            'epoch_idx': i,
+            'mean_speed': mean_speed,
+            'max_speed': max_speed,
+            'duration': result.filter_epochs.iloc[i]['duration']
+        })
+
+hv_df = pd.DataFrame(high_velocity_epochs)
+print(f"\nHigh-velocity replays: {len(hv_df)}/{result.num_filter_epochs}")
+print(hv_df.head())
+```
+
+### Physics-Based Analysis
+
+```python
+from pyphoplacecellanalysis.Analysis.position_derivatives import PositionDerivativesContainer
+import numpy as np
+
+# Analyze energetics of decoded replay
+for i in range(min(5, result.num_filter_epochs)):
+    positions = result.most_likely_positions_list[i]
+    
+    # Create container with unit mass
+    container = PositionDerivativesContainer(
+        pos=positions,
+        mass=1.0
+    )
+    
+    print(f"\nEpoch {i}:")
+    print(f"  Position range: {positions.ptp():.1f} cm")
+    print(f"  Max velocity: {np.abs(container.vel).max():.1f} cm/s")
+    print(f"  Max acceleration: {np.abs(container.accel).max():.1f} cm/s²")
+    print(f"  Total kinetic energy: {container.total_energy:.2f}")
+    print(f"  Total applied force: {container.total_applied_force:.2f}")
+    
+    # Check for physically implausible movements
+    if np.abs(container.accel).max() > 1000:
+        print(f"  WARNING: Implausibly high acceleration detected!")
+```
+
+## Mathematical Details
+
+### Spline-Based Derivative Computation
+
+The `robust_velocity_and_acceleration` function uses cubic spline interpolation (when possible) to compute smooth derivatives:
+
+1. Fit a cubic spline to position vs. time: $s(t)$
+2. Velocity: $v(t) = \frac{ds}{dt}$ (first derivative)
+3. Acceleration: $a(t) = \frac{d^2s}{dt^2}$ (second derivative)
+
+This approach is more robust than simple finite differences, especially for noisy decoded positions.
+
+### Fallback to Gradient Method
+
+If spline fitting fails (e.g., too few points), the function falls back to NumPy's gradient:
+
+```python
+v = np.gradient(x, t)  # Velocity
+a = np.gradient(v, t)  # Acceleration
+```
+
+## See Also
+
+- [Reconstruction Results](/api/analysis/reconstruction) - Decoded position containers
+- [Replay Scoring](/api/analysis/replay-scoring) - Quality metrics for replays
+- [Bayesian Decoders](/api/analysis/decoders) - Core decoder implementations

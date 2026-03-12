@@ -1,0 +1,478 @@
+---
+title: "PyQt Visualization"
+description: "PyQt-based interactive visualization components using PyQtGraph"
+---
+
+## Overview
+
+The PyQt visualization module provides interactive plotting and visualization tools built on PyQtGraph for analyzing neural data.
+
+## BasicBinnedImageRenderingWindow
+
+Interactive window for displaying binned 2D heatmap data.
+
+<ParamField path="matrix" type="ndarray" required>
+  2D data matrix to display
+</ParamField>
+
+<ParamField path="xbins" type="ndarray">
+  X bin edges or centers
+</ParamField>
+
+<ParamField path="ybins" type="ndarray">
+  Y bin edges or centers
+</ParamField>
+
+<ParamField path="name" type="str" default="'avg_velocity'">
+  Identifier for this plot
+</ParamField>
+
+<ParamField path="title" type="str">
+  Display title (defaults to formatted name)
+</ParamField>
+
+<ParamField path="variable_label" type="str">
+  Label for the data variable (defaults to formatted name)
+</ParamField>
+
+<ParamField path="drop_below_threshold" type="float" default="0.0000001">
+  Set values below this to NaN
+</ParamField>
+
+<ParamField path="color_map" type="str | ColorMap" default="'viridis'">
+  Colormap name or ColorMap object
+</ParamField>
+
+<ParamField path="color_bar_mode" type="str">
+  Color bar mode: 'each', 'one', or None
+</ParamField>
+
+<ParamField path="wants_crosshairs" type="bool" default="True">
+  Enable interactive crosshairs
+</ParamField>
+
+<ParamField path="scrollability_mode" type="LayoutScrollability" default="LayoutScrollability.SCROLLABLE">
+  Enable scrollable layout for many plots
+</ParamField>
+
+<ParamField path="grid_opacity" type="float" default="0.65">
+  Opacity of grid lines
+</ParamField>
+
+<ParamField path="defer_show" type="bool" default="False">
+  If True, don't show window immediately
+</ParamField>
+
+### Methods
+
+#### add_data
+
+Add a new subplot to the window.
+
+<ParamField path="row" type="int" default="1">
+  Row position
+</ParamField>
+
+<ParamField path="col" type="int" default="0">
+  Column position
+</ParamField>
+
+<ParamField path="rowspan" type="int" default="1">
+  Number of rows to span
+</ParamField>
+
+<ParamField path="colspan" type="int" default="1">
+  Number of columns to span
+</ParamField>
+
+<ParamField path="matrix" type="ndarray" required>
+  Data matrix to add
+</ParamField>
+
+<ParamField path="xbins" type="ndarray">
+  X bin values
+</ParamField>
+
+<ParamField path="ybins" type="ndarray">
+  Y bin values
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Plot identifier
+</ParamField>
+
+<ParamField path="title" type="str">
+  Plot title
+</ParamField>
+
+<ParamField path="variable_label" type="str">
+  Variable label for colorbar
+</ParamField>
+
+<ParamField path="replace" type="bool" default="False">
+  Replace existing plot with same name
+</ParamField>
+
+```python
+out.add_data(
+    row=1, col=0,
+    matrix=occupancy_data,
+    xbins=xbin_centers,
+    ybins=ybin_centers,
+    name='occupancy',
+    title='Position Occupancy',
+    variable_label='seconds'
+)
+```
+
+#### remove_data
+
+Remove a subplot by name.
+
+<ParamField path="name" type="str" required>
+  Name of plot to remove
+</ParamField>
+
+<ParamField path="remove_connections" type="bool" default="True">
+  Also disconnect signal connections
+</ParamField>
+
+<ResponseField name="success" type="bool">
+  True if plot was removed
+</ResponseField>
+
+```python
+if out.remove_data('occupancy'):
+    print("Removed occupancy plot")
+```
+
+#### init_from_data_spec
+
+Create window from a data specification.
+
+<ParamField path="a_spec" type="List[List[Dict]]" required>
+  Nested list defining plot layout. Each inner list is a row, each dict in the row defines a subplot.
+</ParamField>
+
+<ParamField path="window_title" type="str">
+  Window title
+</ParamField>
+
+<ParamField path="scrollability_mode" type="LayoutScrollability" default="LayoutScrollability.NON_SCROLLABLE">
+  Scrollability setting
+</ParamField>
+
+<ParamField path="grid_opacity" type="float" default="0.4">
+  Grid line opacity
+</ParamField>
+
+<ParamField path="drop_below_threshold" type="float" default="1e-12">
+  Value threshold
+</ParamField>
+
+<ParamField path="color_bar_mode" type="str">
+  Colorbar mode
+</ParamField>
+
+<ParamField path="**shared_kwargs" type="dict">
+  Shared parameters for all plots (e.g., xbins, ybins)
+</ParamField>
+
+<ResponseField name="window" type="BasicBinnedImageRenderingWindow">
+  Created window instance
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.BinnedImageRenderingWindow import (
+    BasicBinnedImageRenderingWindow,
+    LayoutScrollability
+)
+
+# Define layout specification
+spec = [
+    # Row 0: two columns
+    ({'velocity': avg_velocity_matrix}, {'occupancy': occupancy_matrix}),
+    # Row 1: one column  
+    ({'firing_rate': firing_rate_matrix},)
+]
+
+# Create window from spec
+window = BasicBinnedImageRenderingWindow.init_from_data_spec(
+    spec,
+    window_title='Spatial Analysis',
+    xbins=xbin_centers,
+    ybins=ybin_centers,
+    scrollability_mode=LayoutScrollability.SCROLLABLE,
+    color_bar_mode='one'  # Shared colorbar
+)
+```
+
+### Example Usage
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.BinnedImageRenderingWindow import (
+    BasicBinnedImageRenderingWindow,
+    LayoutScrollability
+)
+import numpy as np
+
+# Create sample data
+xbins = np.linspace(0, 100, 50)
+ybins = np.linspace(0, 10, 20)
+velocity_matrix = np.random.rand(50, 20) * 10
+occupancy_matrix = np.random.rand(50, 20) * 100
+
+# Create window with initial data
+out = BasicBinnedImageRenderingWindow(
+    matrix=velocity_matrix,
+    xbins=xbins,
+    ybins=ybins,
+    name='avg_velocity',
+    title='Average Velocity per Position',
+    variable_label='cm/s',
+    scrollability_mode=LayoutScrollability.SCROLLABLE
+)
+
+# Add additional plots
+out.add_data(
+    row=1, col=0,
+    matrix=occupancy_matrix,
+    xbins=xbins,
+    ybins=ybins,
+    name='occupancy',
+    title='Position Occupancy',
+    variable_label='seconds'
+)
+
+# Access plot names
+print(f"Plots: {out.plot_names}")
+
+# Export all plots
+figs_dict = out.export_all_plots(curr_active_pipeline)
+fig_paths = [v[0][0] for v in figs_dict.values()]
+print(f"Saved figures: {fig_paths}")
+```
+
+---
+
+## BasicBinnedImageRenderingWidget
+
+Widget version (can be embedded in other layouts) with same API as BasicBinnedImageRenderingWindow.
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.BinnedImageRenderingWindow import BasicBinnedImageRenderingWidget
+from PyQt5.QtWidgets import QMainWindow, QVBoxLayout, QWidget
+
+class MyWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        # Create binned image widget
+        self.viz_widget = BasicBinnedImageRenderingWidget(
+            matrix=my_matrix,
+            xbins=xbins,
+            ybins=ybins,
+            name='heatmap'
+        )
+        
+        # Add to layout
+        central_widget = QWidget()
+        layout = QVBoxLayout(central_widget)
+        layout.addWidget(self.viz_widget)
+        self.setCentralWidget(central_widget)
+```
+
+---
+
+## Crosshairs Feature
+
+Interactive crosshairs display bin values on hover.
+
+**Configuration:**
+
+<ParamField path="wants_crosshairs" type="bool" default="True">
+  Enable crosshairs
+</ParamField>
+
+<ParamField path="crosshairs_discrete" type="bool" default="True">
+  Snap crosshairs to bin centers
+</ParamField>
+
+**Displayed Information:**
+
+When crosshairs are enabled, hovering over the plot displays:
+- Bin indices (x, y)
+- Bin center values (if xbins/ybins provided)
+- Data value at that bin
+
+```python
+# Create with crosshairs
+window = BasicBinnedImageRenderingWindow(
+    matrix=data,
+    xbins=xbins,
+    ybins=ybins,
+    wants_crosshairs=True,
+    crosshairs_discrete=True,
+    name='interactive_heatmap'
+)
+
+# Hover over plot to see:
+# "(x[25]=52.5, y[10]=5.2), value=3.456"
+```
+
+---
+
+## Color Bar Modes
+
+Control how colorbars are displayed:
+
+### Individual Colorbars (`'each'`)
+
+Each subplot gets its own colorbar scaled to its data range.
+
+```python
+window = BasicBinnedImageRenderingWindow(
+    matrix=data,
+    color_bar_mode='each'
+)
+```
+
+### Shared Colorbar (`'one'`)
+
+All subplots share a single colorbar scaled to the global min/max.
+
+```python
+window = BasicBinnedImageRenderingWindow(
+    matrix=data1,
+    color_bar_mode='one'
+)
+window.add_data(matrix=data2, name='plot2')
+# Both plots use same colorbar range
+```
+
+### No Colorbar (`None`)
+
+No colorbars displayed (colormap still applied).
+
+```python
+window = BasicBinnedImageRenderingWindow(
+    matrix=data,
+    color_bar_mode=None
+)
+```
+
+---
+
+## Scrollability Modes
+
+### LayoutScrollability
+
+Enum controlling scrollable layouts.
+
+**Values:**
+- `LayoutScrollability.NON_SCROLLABLE`: Fixed height, no scrolling
+- `LayoutScrollability.SCROLLABLE`: Enables vertical scrolling for many subplots
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.BinnedImageRenderingWindow import LayoutScrollability
+
+# For many subplots, use scrollable mode
+window = BasicBinnedImageRenderingWindow(
+    matrix=data,
+    scrollability_mode=LayoutScrollability.SCROLLABLE
+)
+
+# Add many plots
+for i in range(20):
+    window.add_data(
+        row=i, col=0,
+        matrix=data_list[i],
+        name=f'plot_{i}'
+    )
+# Window will be scrollable
+```
+
+---
+
+## Advanced Example: Multi-Plot Analysis Dashboard
+
+```python
+from pyphoplacecellanalysis.GUI.PyQtPlot.BinnedImageRenderingWindow import (
+    BasicBinnedImageRenderingWindow,
+    LayoutScrollability
+)
+import numpy as np
+
+# Prepare analysis data
+xbins = np.linspace(0, 100, 63)
+ybins = np.linspace(0, 10, 9)
+
+# Multiple analysis outputs
+velocity_2d = compute_avg_velocity_by_position(session)
+occupancy_2d = compute_occupancy(session)
+firing_rate_2d = compute_spatial_firing_rate(session)
+overlap_density = compute_pf_overlap_density(session)
+
+# Create comprehensive dashboard
+window = BasicBinnedImageRenderingWindow(
+    matrix=velocity_2d,
+    xbins=xbins,
+    ybins=ybins,
+    name='velocity',
+    title='Avg Velocity (cm/s)',
+    variable_label='cm/s',
+    scrollability_mode=LayoutScrollability.SCROLLABLE,
+    color_bar_mode='each',
+    wants_crosshairs=True,
+    grid_opacity=0.5
+)
+
+# Add occupancy
+window.add_data(
+    row=1, col=0,
+    matrix=occupancy_2d,
+    xbins=xbins,
+    ybins=ybins,
+    name='occupancy',
+    title='Position Occupancy (s)',
+    variable_label='seconds'
+)
+
+# Add firing rate
+window.add_data(
+    row=2, col=0,
+    matrix=firing_rate_2d,
+    xbins=xbins,
+    ybins=ybins,
+    name='firing_rate',
+    title='Mean Firing Rate (Hz)',
+    variable_label='Hz',
+    drop_below_threshold=0.1  # Hide bins with low firing
+)
+
+# Add overlap density
+window.add_data(
+    row=3, col=0,
+    matrix=overlap_density,
+    xbins=xbins,
+    ybins=ybins,
+    name='overlap',
+    title='Placefield Overlap Density',
+    variable_label='overlap'
+)
+
+print(f"Dashboard contains {len(window.plot_names)} analysis plots")
+
+# Export for publication
+if save_figures:
+    output_dict = window.export_all_plots(pipeline)
+    print(f"Saved {len(output_dict)} figures")
+```
+
+---
+
+## See Also
+
+- [PyVista 3D Visualization](/api/visualization/pyvista) - 3D interactive plotting
+- [Napari Visualization](/api/visualization/napari) - N-dimensional image viewer
+- [Positional Data](/api/data/positional-data) - Data structures for visualization

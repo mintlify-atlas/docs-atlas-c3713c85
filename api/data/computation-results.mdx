@@ -1,0 +1,341 @@
+---
+title: "Computation Results"
+description: "Data structures for storing and managing computation results"
+---
+
+## Overview
+
+The `ComputationResults` module provides standardized data structures for storing computation outputs, configurations, and metadata.
+
+## ComputationResult
+
+Base class for storing the results of a single computation on a filtered session.
+
+### Fields
+
+<ParamField path="sess" type="DataSession" required>
+  The session object containing the experimental data
+</ParamField>
+
+<ParamField path="computation_config" type="DynamicParameters">
+  Configuration parameters used for the computation
+</ParamField>
+
+<ParamField path="computed_data" type="DynamicParameters">
+  Primary output data stored as a dynamic parameter container
+</ParamField>
+
+<ParamField path="accumulated_errors" type="DynamicParameters">
+  Errors accumulated during computation (non-serialized, computable)
+</ParamField>
+
+<ParamField path="computation_times" type="DynamicParameters">
+  Timing information for computation stages
+</ParamField>
+
+### Methods
+
+#### to_dict
+
+Convert the ComputationResult to a dictionary.
+
+<ResponseField name="result" type="dict">
+  Dictionary representation of all fields
+</ResponseField>
+
+```python
+result_dict = computation_result.to_dict()
+```
+
+#### init_config_from_pipeline
+
+Build a new computation config from the pipeline.
+
+<ParamField path="curr_active_pipeline" type="Pipeline" required>
+  The active analysis pipeline
+</ParamField>
+
+<ResponseField name="config" type="ComputationKWargParameters">
+  Initialized configuration parameters
+</ResponseField>
+
+```python
+config = ComputationResult.init_config_from_pipeline(curr_active_pipeline)
+```
+
+#### update_config_from_pipeline
+
+Update the computation config from the current pipeline state.
+
+<ParamField path="curr_active_pipeline" type="Pipeline" required>
+  The active analysis pipeline
+</ParamField>
+
+```python
+computation_result.update_config_from_pipeline(curr_active_pipeline)
+```
+
+### Example Usage
+
+```python
+from pyphoplacecellanalysis.General.Model.ComputationResults import ComputationResult
+from neuropy.core.session.dataSession import DataSession
+from pyphocorehelpers.DataStructure.dynamic_parameters import DynamicParameters
+
+# Create a computation result
+result = ComputationResult(
+    sess=my_session,
+    computation_config=DynamicParameters(pf_params=pf_config),
+    computed_data=DynamicParameters()
+)
+
+# Store computed data
+result.computed_data.placefield = computed_pf
+result.computed_data.firing_rates = firing_rate_array
+
+# Access data
+print(result.computed_data.placefield)
+
+# Serialize
+result_dict = result.to_dict()
+```
+
+---
+
+## ComputedResult
+
+Modern attrs-based class for storing specific computed results with versioning support.
+
+### Base Fields
+
+<ParamField path="is_global" type="bool" default="False">
+  Whether this is a global (session-wide) result
+</ParamField>
+
+<ParamField path="result_version" type="str" default="'2024.01.01_0'">
+  Version string in format YYYY.MM.DD_N for tracking result schema changes
+</ParamField>
+
+### Version Management Methods
+
+#### get_parsed_result_version
+
+Parse the result version string into comparable components.
+
+<ResponseField name="version" type="Tuple[datetime, int]">
+  Tuple of (date, version_number)
+</ResponseField>
+
+```python
+date, version_num = computed_result.get_parsed_result_version()
+print(f"Result created: {date.strftime('%Y-%m-%d')}, version {version_num}")
+```
+
+#### is_result_version_earlier_than
+
+Check if this result version is earlier than a given version.
+
+<ParamField path="v1" type="str | Tuple[datetime, int] | datetime" required>
+  Version to compare against
+</ParamField>
+
+<ResponseField name="is_earlier" type="bool">
+  True if this result's version is earlier than v1
+</ResponseField>
+
+```python
+if result.is_result_version_earlier_than('2024.03.15_0'):
+    print("Result needs migration")
+    # Perform migration logic
+```
+
+#### is_result_version_newer_than
+
+Check if this result version is newer than a given version.
+
+<ParamField path="v1" type="str | Tuple[datetime, int] | datetime" required>
+  Version to compare against
+</ParamField>
+
+<ResponseField name="is_newer" type="bool">
+  True if this result's version is newer than v1
+</ResponseField>
+
+```python
+if result.is_result_version_newer_than('2023.12.01_0'):
+    print("Using new result format")
+```
+
+### Creating Custom Result Classes
+
+Extend `ComputedResult` to create specialized result containers:
+
+```python
+from pyphoplacecellanalysis.General.Model.ComputationResults import ComputedResult
+from attrs import define, field
+import numpy as np
+
+@define(slots=False, repr=False)
+class CustomAnalysisResult(ComputedResult):
+    """Custom analysis result container."""
+    
+    _VersionedResultMixin_version: str = "2024.03.01_0"
+    
+    # Your custom fields
+    decoded_positions: np.ndarray = field()
+    confidence_values: np.ndarray = field()
+    metadata: dict = field(factory=dict)
+    
+    def __attrs_post_init__(self):
+        """Called after initialization."""
+        super().__attrs_post_init__()
+        # Custom initialization logic
+        if self.metadata is None:
+            self.metadata = {}
+```
+
+### Usage Example
+
+```python
+from pyphoplacecellanalysis.General.Model.ComputationResults import ComputedResult
+from attrs import define
+import numpy as np
+
+@define(slots=False, repr=False)
+class DecodingResult(ComputedResult):
+    is_global: bool = True
+    result_version: str = "2024.03.12_0"
+    
+    decoder_name: str = None
+    decoded_positions: np.ndarray = None
+    confidence: np.ndarray = None
+
+# Create result
+result = DecodingResult(
+    decoder_name="bayesian_1d",
+    decoded_positions=np.array([10.5, 12.3, 15.7]),
+    confidence=np.array([0.95, 0.87, 0.92])
+)
+
+# Check version
+if result.is_result_version_earlier_than('2024.06.01_0'):
+    print("Older result format")
+
+# Serialize to HDF5 (HDFMixin support)
+result.to_hdf('results.h5', key='decoding_result')
+
+# Load from HDF5
+loaded_result = DecodingResult.from_hdf('results.h5', key='decoding_result')
+```
+
+---
+
+## VersionedResultMixin
+
+Mixin class providing version tracking functionality for results.
+
+### Version String Format
+
+Version strings follow the format: `YYYY.MM.DD_N`
+
+- `YYYY.MM.DD`: Date of the version
+- `N`: Version number for that date (used when multiple versions created on same day)
+
+Examples:
+- `"2024.01.15_0"`: First version from January 15, 2024
+- `"2024.01.15_1"`: Second version from January 15, 2024
+- `"2024.03.12_0"`: First version from March 12, 2024
+
+### Adding Versioned Fields
+
+When adding new fields to a versioned result class, include metadata about when the field was added:
+
+```python
+from neuropy.utils.mixins.AttrsClassHelpers import serialized_field
+
+@define(slots=False, repr=False)
+class VersionedResult(ComputedResult):
+    result_version: str = "2025.03.09_0"
+    
+    # Existing field
+    original_data: np.ndarray = serialized_field()
+    
+    # New field added later - include metadata
+    new_analysis: dict = serialized_field(
+        default=None,
+        is_computable=True,
+        repr=False,
+        metadata={'field_added': '2025.03.09_0'}
+    )
+```
+
+### Deserialization with Version Migration
+
+```python
+def __setstate__(self, state):
+    """Handle deserialization with version migration."""
+    result_version: str = state.get('result_version', None)
+    
+    if result_version is None:
+        # Migrating from pre-versioned result
+        result_version = "2024.01.01_0"
+        state['result_version'] = result_version
+    
+    # Check for version-specific migrations
+    if self.is_result_version_earlier_than('2024.03.09_0'):
+        # Add new fields that didn't exist in old version
+        if 'new_analysis' not in state:
+            state['new_analysis'] = None
+    
+    self.__dict__.update(state)
+```
+
+---
+
+## Serialization Support
+
+All result classes support multiple serialization formats:
+
+### Pickle Serialization
+
+```python
+import pickle
+
+# Save
+with open('result.pkl', 'wb') as f:
+    pickle.dump(computation_result, f)
+
+# Load
+with open('result.pkl', 'rb') as f:
+    loaded_result = pickle.load(f)
+```
+
+### HDF5 Serialization
+
+```python
+# Save to HDF5
+computation_result.to_hdf('results.h5', key='my_result')
+
+# Load from HDF5
+loaded_result = ComputedResult.from_hdf('results.h5', key='my_result')
+```
+
+### Accessing Nested Configuration
+
+ComputationResult supports hierarchical configuration access:
+
+```python
+# These are equivalent:
+value = config['pf_params/speed_thresh']
+value = config['pf_params']['speed_thresh']
+value = config.pf_params.speed_thresh
+value = config.pf_params['speed_thresh']
+value = config['pf_params'].speed_thresh
+```
+
+---
+
+## See Also
+
+- [Positional Data](/api/data/positional-data) - Positional tracking data structures
+- [Decoder Results](/api/data/decoder-results) - Specialized decoder result structures

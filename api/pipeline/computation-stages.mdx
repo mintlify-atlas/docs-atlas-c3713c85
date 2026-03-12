@@ -1,0 +1,510 @@
+---
+title: 'ComputedPipelineStage'
+description: 'Manage computation stages and execute registered computation functions'
+icon: 'gear'
+---
+
+## Overview
+
+The `ComputedPipelineStage` class manages the computation stage of the pipeline. It handles:
+
+- Registration and execution of computation functions
+- Managing computation results and errors
+- Supporting both filter-specific and global computations
+- Tracking computation dependencies and execution order
+
+## Class Definition
+
+```python
+@define(slots=False, repr=False)
+class ComputedPipelineStage(FilterablePipelineStage, LoadedPipelineStage)
+```
+
+Location: `pyphoplacecellanalysis/General/Pipeline/Stages/Computation.py:241`
+
+## Initialization
+
+### `init_from_previous_stage`
+
+Create a ComputedPipelineStage from a LoadedPipelineStage.
+
+<ParamField path="loaded_stage" type="LoadedPipelineStage" required>
+  The previous pipeline stage to upgrade from
+</ParamField>
+
+<ResponseField name="stage" type="ComputedPipelineStage">
+  New computation stage with registered functions initialized
+</ResponseField>
+
+### Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.Stages.Computation import ComputedPipelineStage
+from pyphoplacecellanalysis.General.Pipeline.Stages.Loading import LoadedPipelineStage
+
+# Upgrade from loaded stage
+loaded_stage = LoadedPipelineStage(...)
+computed_stage = ComputedPipelineStage.init_from_previous_stage(loaded_stage)
+```
+
+## Computation Function Registration
+
+### `register_computation`
+
+Register a computation function for later execution.
+
+<ParamField path="registered_name" type="str" required>
+  Name to register the function under
+</ParamField>
+
+<ParamField path="computation_function" type="Callable" required>
+  The computation function to register
+</ParamField>
+
+<ParamField path="is_global" type="bool" required>
+  True if this is a global computation (operates across filters), False for filter-specific
+</ParamField>
+
+### Example
+
+```python
+def my_computation(computation_result, **kwargs):
+    """Custom computation function."""
+    # Access previous results
+    previous_data = computation_result.computed_data
+    
+    # Perform computation
+    new_result = perform_analysis(computation_result.sess)
+    
+    # Store result
+    computation_result.computed_data['my_analysis'] = new_result
+    
+    return computation_result
+
+# Register the function
+stage.register_computation(
+    registered_name='my_analysis',
+    computation_function=my_computation,
+    is_global=False
+)
+```
+
+### `reload_default_computation_functions`
+
+Reload all default registered computation functions from the registry.
+
+### Example
+
+```python
+# Reload after modifying computation function code
+stage.reload_default_computation_functions()
+```
+
+### `find_registered_computation_functions`
+
+Find computation functions by name.
+
+<ParamField path="registered_names_list" type="List[str]" required>
+  List of function names to find
+</ParamField>
+
+<ParamField path="search_mode" type="FunctionsSearchMode" default="ANY">
+  Search mode: GLOBAL_ONLY, NON_GLOBAL_ONLY, or ANY
+</ParamField>
+
+<ParamField path="names_list_is_excludelist" type="bool" default="False">
+  If True, return all functions EXCEPT those in the list
+</ParamField>
+
+<ParamField path="return_found_computation_functions_as_list" type="bool" default="True">
+  If True return list, if False return dict
+</ParamField>
+
+<ResponseField name="functions" type="List[Callable] | Dict[str, Callable]">
+  Found computation functions
+</ResponseField>
+
+### Example
+
+```python
+# Find specific functions
+functions = stage.find_registered_computation_functions(
+    registered_names_list=['pf_computation', 'extended_stats'],
+    search_mode=FunctionsSearchMode.NON_GLOBAL_ONLY
+)
+
+# Find all except specific functions
+functions = stage.find_registered_computation_functions(
+    registered_names_list=['legacy_computation'],
+    names_list_is_excludelist=True
+)
+```
+
+## Computation Execution
+
+### `perform_computations`
+
+Execute all registered computation functions.
+
+<ParamField path="active_computation_params" type="DynamicParameters" optional>
+  Parameters to use for computations
+</ParamField>
+
+<ParamField path="enabled_filter_names" type="List[str]" optional>
+  Filter names to compute (None = all filters)
+</ParamField>
+
+<ParamField path="overwrite_extant_results" type="bool" default="False">
+  Recompute even if results exist
+</ParamField>
+
+<ParamField path="computation_functions_name_includelist" type="List[str]" optional>
+  Only run these specific functions
+</ParamField>
+
+<ParamField path="computation_functions_name_excludelist" type="List[str]" optional>
+  Exclude these functions
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="False">
+  Raise exceptions vs. accumulate errors
+</ParamField>
+
+<ParamField path="debug_print" type="bool" default="False">
+  Print debug information
+</ParamField>
+
+### Example
+
+```python
+# Perform all computations
+stage.perform_computations(
+    overwrite_extant_results=False,
+    fail_on_exception=False
+)
+
+# Perform specific computations only
+stage.perform_computations(
+    computation_functions_name_includelist=['pf2D', 'pf2D_Decoder'],
+    overwrite_extant_results=True
+)
+```
+
+### `perform_specific_computation`
+
+Run specific computation functions with optional custom kwargs.
+
+<ParamField path="computation_functions_name_includelist" type="List[str]" required>
+  Function names to execute
+</ParamField>
+
+<ParamField path="computation_kwargs_list" type="List[Dict]" optional>
+  List of kwargs dicts for each function (must match length of includelist)
+</ParamField>
+
+<ParamField path="enabled_filter_names" type="List[str]" optional>
+  Filters to compute on
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="False">
+  Exception handling mode
+</ParamField>
+
+### Example
+
+```python
+# Run specific computation with custom parameters
+stage.perform_specific_computation(
+    computation_functions_name_includelist=['pf2D_Decoder', 'position_decoding'],
+    computation_kwargs_list=[
+        {'time_bin_size': 0.25},
+        {'position_bin_size': 2.0}
+    ],
+    fail_on_exception=False
+)
+```
+
+### `run_specific_computations_single_context`
+
+Re-run specific computations for a single filter context.
+
+<ParamField path="previous_computation_result" type="ComputationResult" required>
+  Previous computation result to update
+</ParamField>
+
+<ParamField path="computation_functions_name_includelist" type="List[str]" required>
+  Functions to execute
+</ParamField>
+
+<ParamField path="computation_kwargs_list" type="List[Dict]" optional>
+  Optional kwargs for each function
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="False">
+  Exception behavior
+</ParamField>
+
+<ParamField path="are_global" type="bool" default="False">
+  Whether these are global computations
+</ParamField>
+
+<ResponseField name="result" type="ComputationResult">
+  Updated computation result
+</ResponseField>
+
+### `rerun_failed_computations`
+
+Retry computation functions that previously failed.
+
+<ParamField path="enabled_filter_names" type="List[str]" optional>
+  Filters to process (None = all)
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="False">
+  Exception handling mode
+</ParamField>
+
+### Example
+
+```python
+# Retry failed computations after fixing code
+stage.rerun_failed_computations(fail_on_exception=False)
+
+# Check for remaining errors
+for filter_name, result in stage.computation_results.items():
+    if len(result.accumulated_errors) > 0:
+        print(f"{filter_name} still has errors:")
+        for fn, error in result.accumulated_errors.items():
+            print(f"  {fn.__name__}: {error}")
+```
+
+## Dependency Resolution
+
+### `resolve_full_required_computation_plan`
+
+Determine all dependencies needed to run target computations.
+
+<ParamField path="computation_functions_name_includelist" type="List[str]" required>
+  Target computations to run
+</ParamField>
+
+<ParamField path="enabled_filter_names" type="List[str]" optional>
+  Filters to consider
+</ParamField>
+
+<ResponseField name="dependencies" type="List[str]">
+  Ordered list of all required computation function names
+</ResponseField>
+
+### Example
+
+```python
+# Find what needs to run before target computation
+dependencies = stage.resolve_full_required_computation_plan(
+    computation_functions_name_includelist=['directional_decoders_decode_continuous']
+)
+
+print(f"Must run these computations first: {dependencies}")
+```
+
+### `resolve_and_execute_full_required_computation_plan`
+
+Resolve dependencies and execute all required computations.
+
+<ParamField path="computation_functions_name_includelist" type="List[str]" required>
+  Target computations to run
+</ParamField>
+
+<ParamField path="computation_kwargs_list" type="List[Dict]" optional>
+  Kwargs for target functions
+</ParamField>
+
+<ParamField path="fail_on_exception" type="bool" default="False">
+  Exception handling
+</ParamField>
+
+### Example
+
+```python
+# Run computation and all its dependencies automatically
+stage.resolve_and_execute_full_required_computation_plan(
+    computation_functions_name_includelist=['directional_decoders_decode_continuous'],
+    fail_on_exception=False
+)
+```
+
+## Result Inspection
+
+### `get_computation_times`
+
+Get timing information for all computations.
+
+<ResponseField name="any_most_recent_computation_time" type="datetime">
+  Most recent computation time across all contexts
+</ResponseField>
+
+<ResponseField name="each_epoch_latest_computation_time" type="Dict[str, datetime]">
+  Latest computation time for each filter
+</ResponseField>
+
+<ResponseField name="each_epoch_each_result_computation_completion_times" type="Dict[str, Dict[str, datetime]]">
+  Completion time for each computation in each filter
+</ResponseField>
+
+<ResponseField name="global_results" type="Tuple[datetime, Dict[str, datetime]]">
+  Global computation latest time and per-function times
+</ResponseField>
+
+### Example
+
+```python
+from datetime import datetime
+
+# Get computation timing info
+latest_time, epoch_times, detailed_times, (global_time, global_details) = \
+    stage.get_computation_times()
+
+print(f"Latest computation: {latest_time}")
+print(f"\nPer-filter latest times:")
+for filter_name, time in epoch_times.items():
+    print(f"  {filter_name}: {time}")
+```
+
+### `get_failed_computations`
+
+Get all failed computations and their errors.
+
+<ParamField path="enabled_filter_names" type="List[str]" optional>
+  Filters to check (None = all)
+</ParamField>
+
+<ResponseField name="errors" type="Dict[str, Dict[str, CapturedException]]">
+  Dictionary mapping filter names to failed function names to exceptions
+</ResponseField>
+
+### Example
+
+```python
+# Get all failed computations
+failed = stage.get_failed_computations()
+
+for filter_name, errors in failed.items():
+    print(f"\n{filter_name} failures:")
+    for fn_name, exception in errors.items():
+        print(f"  {fn_name}: {exception}")
+```
+
+## Properties
+
+### `registered_computation_functions`
+
+<ResponseField name="functions" type="List[Callable]">
+  List of all registered non-global computation functions
+</ResponseField>
+
+### `registered_global_computation_functions`
+
+<ResponseField name="functions" type="List[Callable]">
+  List of all registered global computation functions
+</ResponseField>
+
+### `registered_merged_computation_functions`
+
+<ResponseField name="functions" type="List[Callable]">
+  Combined list of all computation functions (global and non-global)
+</ResponseField>
+
+### `computation_results`
+
+<ResponseField name="results" type="DynamicParameters">
+  Dictionary of ComputationResult objects by filter name
+</ResponseField>
+
+### `global_computation_results`
+
+<ResponseField name="result" type="ComputationResult">
+  Global computation results object
+</ResponseField>
+
+### `active_completed_computation_result_names`
+
+<ResponseField name="names" type="List[str]">
+  Names of all successfully computed filters
+</ResponseField>
+
+### `active_incomplete_computation_result_status_dicts`
+
+<ResponseField name="statuses" type="Dict[str, str]">
+  Dictionary of incomplete filters with reason for incompleteness
+</ResponseField>
+
+## Complete Example
+
+```python
+from pyphoplacecellanalysis.General.Pipeline.Stages.Computation import (
+    ComputedPipelineStage,
+    FunctionsSearchMode
+)
+from pyphoplacecellanalysis.General.Pipeline.Stages.Loading import LoadedPipelineStage
+from datetime import datetime
+
+# Create computation stage from loaded stage
+loaded_stage = LoadedPipelineStage(...)
+stage = ComputedPipelineStage.init_from_previous_stage(loaded_stage)
+
+# Register custom computation
+def custom_analysis(computation_result, threshold=0.5, **kwargs):
+    """Custom analysis computation."""
+    sess = computation_result.sess
+    
+    # Perform analysis
+    result_data = analyze_session(sess, threshold=threshold)
+    
+    # Store in computed_data
+    computation_result.computed_data['custom_analysis'] = result_data
+    
+    return computation_result
+
+stage.register_computation(
+    registered_name='custom_analysis',
+    computation_function=custom_analysis,
+    is_global=False
+)
+
+# Perform computations
+stage.perform_computations(
+    computation_functions_name_includelist=['pf_computation', 'custom_analysis'],
+    fail_on_exception=False
+)
+
+# Check results
+for filter_name, result in stage.computation_results.items():
+    print(f"\n=== {filter_name} ===")
+    print(f"Computed: {list(result.computed_data.keys())}")
+    
+    if len(result.accumulated_errors) > 0:
+        print(f"Errors ({len(result.accumulated_errors)}):")
+        for fn, error in result.accumulated_errors.items():
+            print(f"  - {fn.__name__}: {error}")
+
+# Get computation times
+latest, epoch_times, details, global_info = stage.get_computation_times()
+print(f"\nLatest computation: {latest}")
+
+# Rerun failed computations after fixing issues
+if len(stage.get_failed_computations()) > 0:
+    print("\nRetrying failed computations...")
+    stage.rerun_failed_computations(fail_on_exception=False)
+
+# Run specific computation with dependencies
+stage.resolve_and_execute_full_required_computation_plan(
+    computation_functions_name_includelist=['position_decoding'],
+    fail_on_exception=False
+)
+```
+
+## Related
+
+- [NeuropyPipeline](/api/pipeline/neuropy-pipeline) - Main pipeline class
+- [ComputationResult](/api/pipeline/computation-results) - Result storage
+- [Computation Functions](/guides/running-pipeline) - Available computation functions

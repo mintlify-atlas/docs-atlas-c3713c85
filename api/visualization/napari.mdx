@@ -1,0 +1,503 @@
+---
+title: "Napari Visualization"
+description: "N-dimensional image visualization using Napari for neural data analysis"
+---
+
+## Overview
+
+The Napari visualization module provides tools for visualizing multi-dimensional neural data including time-series tuning curves, trial-by-trial activity, and positional tracking.
+
+## Core Visualization Functions
+
+### napari_from_layers_dict
+
+Create a Napari viewer from a dictionary of layer specifications.
+
+<ParamField path="layers_dict" type="Dict" required>
+  Dictionary where keys are layer names and values are layer configuration dicts with 'img_data' and display parameters
+</ParamField>
+
+<ParamField path="viewer" type="napari.Viewer">
+  Existing viewer to add layers to (creates new if None)
+</ParamField>
+
+<ParamField path="title" type="str" default="'napari'">
+  Viewer window title
+</ParamField>
+
+<ParamField path="ndisplay" type="int" default="2">
+  Number of dimensions to display (2 or 3)
+</ParamField>
+
+<ParamField path="axis_labels" type="tuple">
+  Labels for each axis dimension
+</ParamField>
+
+<ParamField path="show" type="bool" default="True">
+  Show viewer window immediately
+</ParamField>
+
+<ResponseField name="viewer" type="napari.Viewer">
+  The Napari viewer instance
+</ResponseField>
+
+<ResponseField name="image_layer_dict" type="Dict">
+  Dictionary mapping layer names to layer objects
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import napari_from_layers_dict
+import numpy as np
+
+# Prepare layer data
+layers_dict = {
+    'tuning_curves': {
+        'img_data': tuning_map_matrix,  # Shape: (n_neurons, n_trials, n_xbins)
+        'blending': 'translucent',
+        'colormap': 'viridis',
+        'name': 'Tuning Curves'
+    },
+    'correlation_matrix': {
+        'img_data': correlation_matrix,  # Shape: (n_trials, n_trials, n_neurons)
+        'blending': 'additive',
+        'colormap': 'turbo',
+        'name': 'Trial Correlation'
+    }
+}
+
+# Create viewer
+viewer, layer_dict = napari_from_layers_dict(
+    layers_dict,
+    title='Neural Analysis',
+    axis_labels=('neuron', 'trial', 'position')
+)
+
+# Enable grid layout to show layers side-by-side
+viewer.grid.enabled = True
+viewer.grid.shape = (1, -1)  # Single row, auto columns
+```
+
+---
+
+### napari_trial_by_trial_activity_viz
+
+Visualize position-binned activity alongside trial correlation matrix.
+
+<ParamField path="z_scored_tuning_map_matrix" type="ndarray" required>
+  Z-scored tuning maps (n_neurons × n_trials × n_xbins)
+</ParamField>
+
+<ParamField path="C_trial_by_trial_correlation_matrix" type="ndarray" required>
+  Trial correlation matrix (n_neurons × n_trials × n_trials)
+</ParamField>
+
+<ParamField path="cumulative_z_scored_tuning_map_matrix" type="ndarray">
+  Cumulative tuning maps over trials
+</ParamField>
+
+<ParamField path="layers_dict" type="Dict">
+  Custom layer dictionary (overrides default layers)
+</ParamField>
+
+<ParamField path="**viewer_kwargs" type="dict">
+  Additional arguments passed to Napari Viewer
+</ParamField>
+
+<ResponseField name="viewer" type="napari.Viewer">
+  Napari viewer instance
+</ResponseField>
+
+<ResponseField name="image_layer_dict" type="Dict">
+  Dictionary of created image layers
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import napari_trial_by_trial_activity_viz
+import numpy as np
+
+# Compute trial-by-trial data
+z_scored_maps = compute_z_scored_tuning_maps(session)  # (84, 80, 56)
+correlation_matrix = compute_trial_correlation(session)  # (84, 80, 80)
+
+# Create visualization
+viewer, layer_dict = napari_trial_by_trial_activity_viz(
+    z_scored_tuning_map_matrix=z_scored_maps,
+    C_trial_by_trial_correlation_matrix=correlation_matrix,
+    title='Trial Analysis'
+)
+
+# Viewer shows:
+# - Left: Z-scored tuning curves (navigate through neurons/trials)
+# - Right: Trial-by-trial correlation matrix
+
+# Access layers
+tuning_layer = layer_dict['z_scored_tuning_maps']
+corr_layer = layer_dict['C_trial_by_trial_correlation_matrix']
+
+print(f"Tuning maps extent: {tuning_layer.extent}")
+print(f"Correlation extent: {corr_layer.extent}")
+```
+
+---
+
+### napari_plot_directional_trial_by_trial_activity_viz
+
+Plot trial activity for all directional epochs in one viewer.
+
+<ParamField path="directional_active_lap_pf_results_dicts" type="Dict" required>
+  Dictionary mapping epoch names (e.g., 'long_LR', 'short_RL') to trial activity result objects
+</ParamField>
+
+<ParamField path="include_trial_by_trial_correlation_matrix" type="bool" default="True">
+  Include correlation matrices in visualization
+</ParamField>
+
+<ResponseField name="directional_viewer" type="napari.Viewer">
+  Napari viewer with all directional epochs
+</ResponseField>
+
+<ResponseField name="directional_image_layer_dict" type="Dict">
+  Dictionary of all image layers
+</ResponseField>
+
+<ResponseField name="custom_direction_split_layers_dict" type="Dict">
+  Layer configuration dictionary
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import (
+    napari_plot_directional_trial_by_trial_activity_viz
+)
+
+# Prepare directional results
+directional_results = {
+    'long_LR': long_lr_activity_obj,
+    'long_RL': long_rl_activity_obj,
+    'short_LR': short_lr_activity_obj,
+    'short_RL': short_rl_activity_obj
+}
+
+# Create comprehensive directional viewer
+viewer, layer_dict, config_dict = napari_plot_directional_trial_by_trial_activity_viz(
+    directional_active_lap_pf_results_dicts=directional_results,
+    include_trial_by_trial_correlation_matrix=True
+)
+
+# Viewer displays 8 panels (4 epochs × 2 plots each):
+# - long_LR tuning maps + correlation
+# - long_RL tuning maps + correlation  
+# - short_LR tuning maps + correlation
+# - short_RL tuning maps + correlation
+
+# Grid is automatically configured
+print(f"Grid shape: {viewer.grid.shape}")  # (-1, 4)
+```
+
+---
+
+## Animal Position Tracking
+
+### napari_add_animal_position
+
+Add animal position as tracks and points to viewer.
+
+<ParamField path="viewer" type="napari.Viewer" required>
+  Napari viewer to add position to
+</ParamField>
+
+<ParamField path="position_df" type="DataFrame" required>
+  Position dataframe with columns ['t', 'x', 'y'] or ['t', 'x', 'binned_x']
+</ParamField>
+
+<ParamField path="time_intervals" type="ndarray" required>
+  Time intervals (N × 2) defining time windows
+</ParamField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import napari_add_animal_position
+
+# Add position tracking to existing viewer
+napari_add_animal_position(
+    viewer=viewer,
+    position_df=session.position_df[['t', 'x', 'binned_x']],
+    time_intervals=decoder.active_time_windows
+)
+
+# Viewer now shows:
+# - Green vertical bars indicating animal position
+# - Track connecting positions across time
+# - Position updates as you scrub through time
+```
+
+---
+
+## Time Navigation
+
+### napari_set_time_windw_index
+
+Set the current time window index.
+
+<ParamField path="viewer" type="napari.Viewer" required>
+  Napari viewer instance
+</ParamField>
+
+<ParamField path="current_timepoint" type="int" required>
+  Time index to navigate to
+</ParamField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import napari_set_time_windw_index
+
+# Jump to specific time index
+napari_set_time_windw_index(viewer, 100)
+
+# Animate through time
+for t_idx in range(0, 200, 10):
+    napari_set_time_windw_index(viewer, t_idx)
+    time.sleep(0.1)
+```
+
+---
+
+## Text Overlays and Labels
+
+### build_aclu_label
+
+Add dynamic text overlay showing current neuron ID.
+
+<ParamField path="a_viewer" type="napari.Viewer" required>
+  Napari viewer instance
+</ParamField>
+
+<ParamField path="a_matrix_IDX_to_aclu_map" type="Dict[int, int]" required>
+  Mapping from matrix index to neuron ID (aclu)
+</ParamField>
+
+<ParamField path="enable_point_based_label" type="bool" default="False">
+  Use point layer for label (alternative to text overlay)
+</ParamField>
+
+<ResponseField name="on_update_slider" type="callable">
+  Connected event handler
+</ResponseField>
+
+<ResponseField name="points_layer" type="Points layer or None">
+  Point layer if enabled, else None
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import build_aclu_label
+
+# Get neuron ID mapping
+result = directional_results['long_LR']
+matrix_idx_to_aclu = {v: k for k, v in result.aclu_to_matrix_IDX_map.items()}
+
+# Add dynamic label
+on_update, points = build_aclu_label(
+    a_viewer=viewer,
+    a_matrix_IDX_to_aclu_map=matrix_idx_to_aclu,
+    enable_point_based_label=False
+)
+
+# Text overlay now shows:
+# "aclu: 42" (updates as you navigate through neurons)
+```
+
+### napari_add_aclu_slider
+
+Add neuron ID text overlay that updates with slider.
+
+<ParamField path="viewer" type="napari.Viewer" required>
+  Napari viewer
+</ParamField>
+
+<ParamField path="neuron_ids" type="ndarray" required>
+  Array of neuron IDs indexed by matrix position
+</ParamField>
+
+<ResponseField name="connected_event" type="event connection">
+  Connected slider event
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import napari_add_aclu_slider
+
+# Add slider label
+event_conn = napari_add_aclu_slider(
+    viewer=viewer,
+    neuron_ids=np.array([42, 57, 103, 88])  # Matrix index 0->42, 1->57, etc.
+)
+
+# Label updates automatically as slider moves
+# Shows: "aclu: 42, IDX: 0"
+```
+
+---
+
+## Image Export
+
+### napari_export_image_sequence
+
+Export image sequence by stepping through slider.
+
+<ParamField path="viewer" type="napari.Viewer" required>
+  Napari viewer to export from
+</ParamField>
+
+<ParamField path="imageseries_output_directory" type="str | Path" default="'output/videos/imageseries/'">
+  Output directory for images
+</ParamField>
+
+<ParamField path="slider_axis_IDX" type="int" default="0">
+  Which axis slider to step through
+</ParamField>
+
+<ParamField path="build_filename_from_viewer_callback_fn" type="callable">
+  Custom filename builder function
+</ParamField>
+
+<ResponseField name="output_directory" type="Path">
+  Path to directory containing exported images
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import napari_export_image_sequence
+from pathlib import Path
+
+# Export image sequence
+output_dir = napari_export_image_sequence(
+    viewer=viewer,
+    imageseries_output_directory=Path('./exports'),
+    slider_axis_IDX=0  # Step through first dimension
+)
+
+print(f"Exported images to: {output_dir}")
+# Creates: screenshot_00000.png, screenshot_00001.png, ...
+
+# Custom filename builder
+def custom_filename(viewer, desired_save_parent_path, slider_axis_IDX):
+    curr_idx = viewer.dims.current_step[slider_axis_IDX]
+    neuron_id = neuron_ids[curr_idx]
+    return desired_save_parent_path / f'neuron_{neuron_id:03d}.png'
+
+output_dir = napari_export_image_sequence(
+    viewer=viewer,
+    imageseries_output_directory=Path('./exports'),
+    build_filename_from_viewer_callback_fn=custom_filename
+)
+# Creates: neuron_042.png, neuron_057.png, ...
+```
+
+---
+
+## Layer Configuration
+
+### extract_layer_info
+
+Extract configuration from a single layer.
+
+<ParamField path="a_layer" type="napari layer" required>
+  Layer to extract info from
+</ParamField>
+
+<ResponseField name="properties_dict" type="Dict">
+  Dictionary with 'positioning' and other properties
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import extract_layer_info
+
+layer = viewer.layers['tuning_curves']
+layer_info = extract_layer_info(layer)
+
+print(layer_info['positioning']['scale'])
+print(layer_info['positioning']['translate'])
+```
+
+### napari_extract_layers_info
+
+Extract configuration from all layers.
+
+<ParamField path="layers" type="list" required>
+  List of Napari layers
+</ParamField>
+
+<ResponseField name="layers_info_dict" type="Dict">
+  Dictionary mapping layer names to configuration dicts
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import napari_extract_layers_info
+
+layers_info = napari_extract_layers_info(viewer.layers)
+
+for name, info in layers_info.items():
+    print(f"Layer '{name}':")
+    print(f"  Scale: {info['positioning']['scale']}")
+    print(f"  Translate: {info['positioning']['translate']}")
+```
+
+---
+
+## Complete Example: Trial-by-Trial Analysis
+
+```python
+from pyphoplacecellanalysis.GUI.Napari.napari_helpers import (
+    napari_plot_directional_trial_by_trial_activity_viz,
+    build_aclu_label,
+    napari_export_image_sequence
+)
+from pathlib import Path
+import numpy as np
+
+# Compute directional trial activity
+directional_results = compute_directional_lap_activity(session)
+
+# Create comprehensive viewer
+viewer, layer_dict, config = napari_plot_directional_trial_by_trial_activity_viz(
+    directional_active_lap_pf_results_dicts=directional_results,
+    include_trial_by_trial_correlation_matrix=True
+)
+
+# Configure viewer
+viewer.grid.enabled = True
+viewer.grid.shape = (-1, 4)  # 4 columns for 4 directional epochs
+viewer.dims.axis_labels = ('neuron', 'trial', 'position')
+
+# Add neuron ID label
+result = list(directional_results.values())[0]
+idx_to_aclu = {v: k for k, v in result.aclu_to_matrix_IDX_map.items()}
+on_update, points = build_aclu_label(
+    a_viewer=viewer,
+    a_matrix_IDX_to_aclu_map=idx_to_aclu
+)
+
+# Customize layer appearance
+for name, layer in layer_dict.items():
+    if 'tuning' in name:
+        layer.colormap = 'viridis'
+        layer.opacity = 0.8
+    elif 'correlation' in name:
+        layer.colormap = 'turbo'
+        layer.opacity = 1.0
+
+# Export visualization
+print("Navigate to desired view, then run export...")
+input("Press Enter to export images...")
+
+export_dir = napari_export_image_sequence(
+    viewer=viewer,
+    imageseries_output_directory=Path('./trial_analysis_exports'),
+    slider_axis_IDX=0
+)
+
+print(f"Exported {len(list(export_dir.glob('*.png')))} images")
+```
+
+---
+
+## See Also
+
+- [PyQt Visualization](/api/visualization/pyqt) - 2D interactive plotting
+- [PyVista 3D Visualization](/api/visualization/pyvista) - 3D neural visualization
+- [Decoder Results](/api/data/decoder-results) - Data structures for trial analysis

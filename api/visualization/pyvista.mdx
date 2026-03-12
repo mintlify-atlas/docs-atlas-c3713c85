@@ -1,0 +1,433 @@
+---
+title: "PyVista 3D Visualization"
+description: "3D interactive visualization using PyVista for spatial neural data"
+---
+
+## Overview
+
+The PyVista visualization module provides 3D interactive plotting capabilities for visualizing neural activity in spatial contexts.
+
+## PhoInteractivePlotter
+
+Wrapper class for PyVista's plotter with animation and interactive playback support.
+
+<ParamField path="p" type="BackgroundPlotter | MultiPlotter | pv.Plotter" required>
+  PyVista plotter instance
+</ParamField>
+
+<ParamField path="interface_properties" type="InterfaceProperties" required>
+  Interface state and slider configuration
+</ParamField>
+
+<ParamField path="step_size" type="int" default="15">
+  Step size for animation updates
+</ParamField>
+
+<ParamField path="animation_callback_interval_milliseconds" type="int" default="16">
+  Callback interval in ms (~60 FPS at 16ms)
+</ParamField>
+
+### Class Methods
+
+#### init_from_plotter_and_slider
+
+Initialize from existing plotter and slider.
+
+<ParamField path="pyvista_plotter" type="BackgroundPlotter | pv.Plotter" required>
+  PyVista plotter object
+</ParamField>
+
+<ParamField path="interactive_timestamp_slider_actor" type="slider actor" required>
+  Slider actor for time control
+</ParamField>
+
+<ParamField path="step_size" type="float" default="15">
+  Animation step size
+</ParamField>
+
+<ParamField path="animation_callback_interval_ms" type="float" default="16">
+  Callback interval in milliseconds
+</ParamField>
+
+<ResponseField name="plotter" type="PhoInteractivePlotter">
+  Initialized interactive plotter instance
+</ResponseField>
+
+```python
+from pyphoplacecellanalysis.GUI.PyVista.InteractivePlotter.PhoInteractivePlotter import PhoInteractivePlotter
+import pyvista as pv
+from pyvistaqt import BackgroundPlotter
+
+# Create PyVista plotter
+p = BackgroundPlotter()
+
+# Add timestamp slider
+slider = p.add_slider_widget(
+    callback=lambda value: update_time(value),
+    rng=[0, max_time],
+    title='Time'
+)
+
+# Create interactive plotter
+interactive_plotter = PhoInteractivePlotter.init_from_plotter_and_slider(
+    pyvista_plotter=p,
+    interactive_timestamp_slider_actor=slider,
+    step_size=10,
+    animation_callback_interval_ms=33  # ~30 FPS
+)
+```
+
+### Methods
+
+#### add_ui
+
+Add animation control checkbox.
+
+```python
+# Checkbox is automatically added during initialization
+# Toggle animation on/off by clicking the checkbox
+```
+
+### Properties
+
+- `animation_state` (bool): Current animation playing state
+- `step_size` (int): Current step size for animation
+
+---
+
+## InteractivePlaceCellDataExplorer
+
+3D interactive browser for neural activity and behavior.
+
+<ParamField path="active_config" type="config object" required>
+  Configuration object containing plotting parameters
+</ParamField>
+
+<ParamField path="active_session" type="DataSession" required>
+  Session object with neural and behavioral data
+</ParamField>
+
+<ParamField path="extant_plotter" type="BackgroundPlotter">
+  Existing plotter to use (creates new if None)
+</ParamField>
+
+### Signals
+
+#### sigOnUpdateMeshes
+
+Emitted after meshes are updated.
+
+<ParamField path="t_start" type="float">
+  Start time of update window
+</ParamField>
+
+<ParamField path="t_stop" type="float">
+  End time of update window
+</ParamField>
+
+```python
+# Connect to update signal
+def on_mesh_update(t_start, t_stop):
+    print(f"Updated to time range [{t_start:.2f}, {t_stop:.2f}]")
+
+explorer.sigOnUpdateMeshes.connect(on_mesh_update)
+```
+
+### Properties
+
+**Data Access:**
+
+- `flattened_spike_times` (ndarray): All spike times flattened
+- `flattened_spike_active_unitIdentities` (ndarray): Neuron ID for each spike
+- `flattened_spike_positions_list` (ndarray): Spike positions (2×N)
+
+**Plot Object Access:**
+
+- `spikes_main_historical` (mesh): Historical spike visualization
+- `spikes_main_recent_only` (mesh): Recent spike visualization  
+- `animal_location_trail` (mesh): Animal trajectory trail
+- `animal_current_location_point` (mesh): Current animal position
+
+### Methods
+
+#### on_programmatic_data_update
+
+Programmatically update the interactive plot.
+
+<ParamField path="active_included_all_historical_indicies" type="ndarray">
+  Indices of all historical spikes to show
+</ParamField>
+
+<ParamField path="active_included_recent_only_indicies" type="ndarray">
+  Indices of only recent spikes to highlight
+</ParamField>
+
+<ParamField path="active_window_sample_indicies" type="ndarray">
+  Indices for position trail window
+</ParamField>
+
+<ParamField path="curr_animal_point" type="ndarray">
+  Current animal position [x, y, z]
+</ParamField>
+
+```python
+# Update visualization to specific time window
+t_start = 100.0
+t_stop = 110.0
+
+# Get spike indices in time window
+historical_idx = np.where(
+    (spike_times >= t_start - 30) & (spike_times < t_stop)
+)[0]
+recent_idx = np.where(
+    (spike_times >= t_start) & (spike_times < t_stop)
+)[0]
+
+# Get position indices
+pos_idx = get_position_window_indices(t_start, t_stop)
+
+# Get current position
+curr_pos = get_animal_position_at_time(t_stop)
+
+# Update
+explorer.on_programmatic_data_update(
+    active_included_all_historical_indicies=historical_idx,
+    active_included_recent_only_indicies=recent_idx,
+    active_window_sample_indicies=pos_idx,
+    curr_animal_point=curr_pos
+)
+```
+
+### Example Usage
+
+```python
+from pyphoplacecellanalysis.GUI.PyVista.InteractivePlotter.InteractivePlaceCellDataExplorer import InteractivePlaceCellDataExplorer
+from neuropy.core.session.dataSession import DataSession
+import numpy as np
+
+# Load session data
+session = DataSession.load('path/to/session')
+
+# Configure visualization
+from pyphocorehelpers.DataStructure.general_parameter_containers import VisualizationParameters
+
+config = VisualizationParameters(
+    plotting_config=dict(
+        pf_listed_colormap='hsv',
+        should_use_linear_track_geometry=True
+    )
+)
+
+# Create explorer
+explorer = InteractivePlaceCellDataExplorer(
+    active_config=config,
+    active_session=session
+)
+
+# The 3D window will show:
+# - Maze/arena geometry
+# - Animal position trail
+# - Neural spike activity as 3D cones/boxes
+# - Interactive time slider
+# - Animation controls
+
+# Access the plotter for customization
+p = explorer.p
+p.camera_position = 'xy'  # Top-down view
+p.show_grid()
+
+# Connect to updates
+explorer.sigOnUpdateMeshes.connect(
+    lambda t_start, t_stop: print(f"Time: {t_stop:.2f}s")
+)
+```
+
+---
+
+## Visualization Window
+
+### VisualizationWindow
+
+Defines temporal windows for animation and data display.
+
+<ParamField path="duration_seconds" type="float" required>
+  Window duration in seconds
+</ParamField>
+
+<ParamField path="sampling_rate" type="float">
+  Data sampling rate in Hz
+</ParamField>
+
+<ParamField path="duration_num_frames" type="int">
+  Window duration in frames (alternative to sampling_rate)
+</ParamField>
+
+**Attributes:**
+
+- `duration_seconds` (float): Window duration
+- `duration_num_frames` (int): Window duration in frames
+
+**Methods:**
+
+- `build_sliding_windows(data)`: Create sliding windows over data array
+
+```python
+from pyphoplacecellanalysis.PhoPositionalData.plotting.visualization_window import VisualizationWindow
+
+# Create 10-second trailing window
+recent_window = VisualizationWindow(
+    duration_seconds=10.0,
+    sampling_rate=30.0  # 30 Hz position sampling
+)
+
+# Create 30-second historical window
+historical_window = VisualizationWindow(
+    duration_seconds=30.0,
+    sampling_rate=30.0
+)
+
+print(f"Recent window: {recent_window.duration_num_frames} frames")
+print(f"Historical window: {historical_window.duration_num_frames} frames")
+
+# Build sliding windows over position indices
+position_indices = np.arange(len(position_data))
+windows = recent_window.build_sliding_windows(position_indices)
+print(f"Created {len(windows)} sliding windows")
+```
+
+---
+
+## 3D Spike Geometry
+
+Spikes can be rendered with different 3D geometries:
+
+### spike_geom_box
+
+Box/cube geometry for historical spikes.
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import spike_geom_box
+
+# Box geometry is typically used for older/historical spikes
+historical_spike_geom = spike_geom_box.copy()
+```
+
+### spike_geom_cone
+
+Cone/pyramid geometry for recent spikes.
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.spikeAndPositions import spike_geom_cone
+
+# Cone geometry highlights recent spikes  
+recent_spike_geom = spike_geom_cone.copy()
+```
+
+---
+
+## Advanced Example: Custom 3D Neural Visualization
+
+```python
+from pyphoplacecellanalysis.GUI.PyVista.InteractivePlotter.InteractivePlaceCellDataExplorer import InteractivePlaceCellDataExplorer
+from pyphoplacecellanalysis.PhoPositionalData.plotting.visualization_window import VisualizationWindow
+from pyphocorehelpers.DataStructure.general_parameter_containers import VisualizationParameters
+from neuropy.core.session.dataSession import DataSession
+import pyvista as pv
+import numpy as np
+
+# Load data
+session = DataSession.load('session_path')
+
+# Configure visualization
+config = VisualizationParameters(
+    plotting_config=dict(
+        pf_listed_colormap='rainbow',  # Colormap for neurons
+        should_use_linear_track_geometry=False,  # Custom arena
+        background_color='white',
+        lighting=True
+    )
+)
+
+# Create explorer with custom windows
+explorer = InteractivePlaceCellDataExplorer(
+    active_config=config,
+    active_session=session
+)
+
+# Customize visualization windows
+explorer.params.recent_spikes_window = VisualizationWindow(
+    duration_seconds=5.0,  # 5-second recent window
+    sampling_rate=session.position.sampling_rate
+)
+
+explorer.params.longer_spikes_window = VisualizationWindow(
+    duration_seconds=60.0,  # 60-second historical window
+    sampling_rate=session.position.sampling_rate
+)
+
+# Access the plotter for customization
+p = explorer.p
+
+# Set camera
+p.camera_position = [
+    (50, 50, 100),  # Camera location
+    (50, 50, 0),    # Focal point
+    (0, 1, 0)       # View up vector
+]
+
+# Add scale bar
+p.add_ruler(
+    pointa=[0, 0, 0],
+    pointb=[10, 0, 0],
+    title='10 cm'
+)
+
+# Add text annotations
+p.add_text(
+    'Neural Activity Browser',
+    position='upper_left',
+    font_size=14,
+    color='black'
+)
+
+# Connect to updates for logging
+def log_update(t_start, t_stop):
+    n_spikes = np.sum(
+        (explorer.flattened_spike_times >= t_start) &
+        (explorer.flattened_spike_times < t_stop)
+    )
+    print(f"Time [{t_start:.2f}, {t_stop:.2f}]s: {n_spikes} spikes")
+
+explorer.sigOnUpdateMeshes.connect(log_update)
+
+# Start interactive session
+p.show()
+
+# Save animation (if configured)
+# from pyphoplacecellanalysis.Pho3D.PyVista.animations import make_mp4_from_plotter
+# make_mp4_from_plotter(p, 'neural_activity.mp4', fps=30)
+```
+
+---
+
+## Animation Recording
+
+```python
+from pyphoplacecellanalysis.Pho3D.PyVista.animations import make_mp4_from_plotter
+
+# After setting up interactive plotter
+make_mp4_from_plotter(
+    plotter=explorer.p,
+    filename='output.mp4',
+    fps=30,
+    quality=5  # 1-10, higher is better quality
+)
+```
+
+---
+
+## See Also
+
+- [PyQt Visualization](/api/visualization/pyqt) - 2D interactive plotting
+- [Napari Visualization](/api/visualization/napari) - N-dimensional image viewer  
+- [Positional Data](/api/data/positional-data) - Data structures for 3D visualization
