@@ -184,3 +184,143 @@ print(f"Decoded {len(time_centers)} time bins over {session_duration:.1f}s")
 - [Reconstruction Results](/api/analysis/reconstruction) - Working with decoded results
 - [Replay Scoring](/api/analysis/replay-scoring) - Evaluating replay quality
 - [Position Derivatives](/api/analysis/position-derivatives) - Computing velocity and acceleration
+
+## BayesianPlacemapPositionDecoder
+
+Extended decoder class that holds decoded results and provides additional functionality for continuous decoding and result analysis.
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import BayesianPlacemapPositionDecoder
+
+# Create decoder with time binning
+decoder = BayesianPlacemapPositionDecoder(
+    pf=pf1D,
+    spikes_df=spikes_df,
+    time_bin_size=0.025,
+    setup_on_init=True
+)
+```
+
+<ParamField path="pf" type="PfND" required>
+  Place field object containing tuning curves for decoding
+</ParamField>
+
+<ParamField path="spikes_df" type="pd.DataFrame" required>
+  DataFrame containing spike times and neuron IDs
+</ParamField>
+
+<ParamField path="time_bin_size" type="float" required>
+  Size of decoding time bins in seconds (e.g., 0.025 for 25ms bins)
+</ParamField>
+
+<ParamField path="setup_on_init" type="bool" default="True">
+  Whether to compute time binning on initialization
+</ParamField>
+
+<ParamField path="debug_print" type="bool" default="False">
+  Enable debug output during decoding
+</ParamField>
+
+### Differences from BasePositionDecoder
+
+`BayesianPlacemapPositionDecoder` extends `BasePositionDecoder` with:
+
+- **Time binning**: Pre-computes spike counts in time bins
+- **Result storage**: Stores decoded posterior probabilities and positions
+- **Continuous decoding**: Designed for decoding entire sessions
+- **Marginal distributions**: Computes marginal position probabilities
+
+<Note>
+`BasePositionDecoder` is stateless and suitable for epoch-specific decoding, while `BayesianPlacemapPositionDecoder` is stateful and optimized for continuous session decoding.
+</Note>
+
+### Additional Properties
+
+<ResponseField name="time_window_edges" type="np.ndarray">
+  Edges of time windows used for binning
+</ResponseField>
+
+<ResponseField name="time_window_centers" type="np.ndarray">
+  Center timestamps of each time window
+</ResponseField>
+
+<ResponseField name="unit_specific_time_binned_spike_counts" type="np.ndarray">
+  Spike counts per neuron per time bin (n_neurons, n_time_bins)
+</ResponseField>
+
+<ResponseField name="p_x_given_n" type="np.ndarray">
+  Posterior probability of position given spikes (n_xbins, n_time_bins)
+</ResponseField>
+
+<ResponseField name="most_likely_positions" type="np.ndarray">
+  Most likely position at each time bin
+</ResponseField>
+
+<ResponseField name="marginal" type="DynamicContainer">
+  Marginal distributions over position dimensions
+</ResponseField>
+
+<ResponseField name="is_non_firing_time_bin" type="np.ndarray">
+  Boolean array indicating time bins with no spikes
+</ResponseField>
+
+### Example: Continuous Session Decoding
+
+```python
+from pyphoplacecellanalysis.Analysis.Decoder.reconstruction import BayesianPlacemapPositionDecoder
+
+# Create decoder for entire session
+decoder = BayesianPlacemapPositionDecoder(
+    pf=pf1D,
+    spikes_df=sess.spikes_df,
+    time_bin_size=0.025,
+    setup_on_init=True
+)
+
+# Access pre-computed time binning
+print(f"Time bins: {decoder.num_time_windows}")
+print(f"Time range: {decoder.time_window_centers[0]:.2f}s - {decoder.time_window_centers[-1]:.2f}s")
+
+# Get spike counts per neuron per time bin
+spike_counts = decoder.unit_specific_time_binned_spike_counts
+print(f"Spike count matrix shape: {spike_counts.shape}")  # (n_neurons, n_time_bins)
+
+# Compute Bayesian decoding
+decoder.compute_all()
+
+# Access results
+posterior = decoder.p_x_given_n  # (n_xbins, n_time_bins)
+positions = decoder.most_likely_positions  # (n_time_bins,)
+print(f"Decoded {len(positions)} positions")
+```
+
+### Example: Handling Non-Firing Bins
+
+```python
+# Identify time bins with no spikes
+no_spike_bins = decoder.is_non_firing_time_bin
+print(f"Non-firing bins: {no_spike_bins.sum()} / {len(no_spike_bins)}")
+
+# Filter to only active bins
+active_indices = ~no_spike_bins
+active_positions = decoder.most_likely_positions[active_indices]
+active_times = decoder.time_window_centers[active_indices]
+
+# Use for analysis
+print(f"Active decoding bins: {len(active_positions)}")
+```
+
+### When to Use Which Decoder
+
+| Use Case | Decoder Class |
+|----------|---------------|
+| Decode specific replay events | `BasePositionDecoder` |
+| Epoch-based analysis | `BasePositionDecoder` |
+| Leave-one-out analysis | `BasePositionDecoder` |
+| Continuous session decoding | `BayesianPlacemapPositionDecoder` |
+| Store decoding results | `BayesianPlacemapPositionDecoder` |
+| Pre-compute time binning | `BayesianPlacemapPositionDecoder` |
+
+<Tip>
+For most replay and epoch-based analyses, use `BasePositionDecoder.decode_specific_epochs()`. Only use `BayesianPlacemapPositionDecoder` when you need continuous decoding of an entire session or want to store results in the decoder object.
+</Tip>
